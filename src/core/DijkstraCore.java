@@ -74,9 +74,66 @@ public class DijkstraCore {
     }
 
     private static void carregarGrafo(String caminhoArquivo) {
-        // TODO: Implementar a leitura exata do formato .poly gerado pelo código em C.
-        // O formato contém: total_nodes, coordenadas (id, x, y), total_edges e conexões (id, from, to).
-        // Por enquanto, esta função é um "stub" (esqueleto) para receber a lógica de I/O.
+        try (BufferedReader br = new BufferedReader(new FileReader(caminhoArquivo))) {
+            
+            // 1. Lendo cabeçalho dos vértices
+            String linha = br.readLine();
+            if (linha == null) return;
+            
+            String[] partesCabecalho = linha.trim().split("\\s+");
+            totalVertices = Integer.parseInt(partesCabecalho[0]);
+            grafo = new Vertice[totalVertices];
+
+            // 2. Lendo os vértices (id_interno, x, y)
+            for (int i = 0; i < totalVertices; i++) {
+                linha = br.readLine();
+                String[] partes = linha.trim().split("\\s+");
+                
+                int id = Integer.parseInt(partes[0]);
+                // O Java usa locale dependente para double. Substituímos vírgula por ponto por segurança
+                double x = Double.parseDouble(partes[1].replace(",", "."));
+                double y = Double.parseDouble(partes[2].replace(",", "."));
+                
+                grafo[id] = new Vertice(id, x, y);
+            }
+
+            // 3. Lendo cabeçalho das arestas
+            linha = br.readLine();
+            String[] partesArestas = linha.trim().split("\\s+");
+            int totalArestas = Integer.parseInt(partesArestas[0]);
+
+            // 4. Lendo as arestas (numID, from, to, 0)
+            for (int i = 0; i < totalArestas; i++) {
+                linha = br.readLine();
+                String[] partes = linha.trim().split("\\s+");
+                
+                int from = Integer.parseInt(partes[1]);
+                int to = Integer.parseInt(partes[2]);
+
+                // Calcula o peso real da aresta usando a distância euclidiana
+                double peso = calcularDistancia(grafo[from], grafo[to]);
+
+                // Adiciona a aresta na Lista de Adjacência.
+                // Como o requisito RNF06 pede suporte a mão dupla[cite: 1],
+                // vamos inserir a conexão bidirecional por padrão nesta etapa.
+                grafo[from].vizinhos.add(new Aresta(to, peso));
+                grafo[to].vizinhos.add(new Aresta(from, peso)); 
+            }
+            
+            // A última linha impressa pelo C é um "0", não precisamos lê-la
+
+        } catch (IOException e) {
+            System.err.println("{\"erro\": \"Falha ao ler o arquivo .poly: " + e.getMessage() + "\"}");
+            System.exit(1);
+        } catch (Exception e) {
+            System.err.println("{\"erro\": \"Arquivo fora do formato esperado: " + e.getMessage() + "\"}");
+            System.exit(1);
+        }
+    }
+
+    // Função baseada na calcDist do seu arquivo em C[cite: 5]
+    private static double calcularDistancia(Vertice v1, Vertice v2) {
+        return Math.sqrt(Math.pow(v1.x - v2.x, 2) + Math.pow(v1.y - v2.y, 2));
     }
 
     private static ResultadoDijkstra executarDijkstra(int origem, int destino) {
