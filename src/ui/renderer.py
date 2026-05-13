@@ -25,7 +25,8 @@ class MapGraphicsView(QGraphicsView):
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
         elif event.button() == Qt.MouseButton.LeftButton:
             scene_pos = self.mapToScene(event.pos())
-            self.app_window.ao_clicar_mapa(scene_pos.x(), scene_pos.y())
+            shift_pressed = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+            self.app_window.ao_clicar_mapa(scene_pos.x(), scene_pos.y(), shift_pressed)
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -50,22 +51,62 @@ def draw_map(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], ed
 
     path_mapa = QPainterPath()
     for u, v in edges:
-        x1, y1 = vertices[u]
-        x2, y2 = vertices[v]
-        path_mapa.moveTo(x1, y1)
-        path_mapa.lineTo(x2, y2)
+        if u in vertices and v in vertices:
+            x1, y1 = vertices[u]
+            x2, y2 = vertices[v]
+            path_mapa.moveTo(x1, y1)
+            path_mapa.lineTo(x2, y2)
 
     return scene.addPath(path_mapa, pen_rua)
 
+import math
+from PyQt6.QtWidgets import QGraphicsSimpleTextItem, QGraphicsEllipseItem
 
-def draw_permanent_point(scene: QGraphicsScene, x: float, y: float, color: str):
-    raio = 5
-    elipse = QGraphicsEllipseItem(-raio, -raio, raio * 2, raio * 2)
-    elipse.setBrush(QBrush(QColor(color)))
-    elipse.setPos(x, y)
-    elipse.setFlag(QGraphicsEllipseItem.GraphicsItemFlag.ItemIgnoresTransformations)
-    scene.addItem(elipse)
-    return elipse
+def draw_labels(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], edges: list[tuple[int, int]]):
+    labels = []
+    
+    # Pré-calcular conexões e distâncias para o tooltip
+    adj = {vid: [] for vid in vertices}
+    for u, v in edges:
+        if u in vertices and v in vertices:
+            x1, y1 = vertices[u]
+            x2, y2 = vertices[v]
+            dist = math.hypot(x1 - x2, y1 - y2)
+            adj[u].append((v, dist))
+            adj[v].append((u, dist)) # Assumindo grafo bidirecional visualmente
+            
+    brush_v_dot = QBrush(QColor("#5e81ac"))
+    
+    for id_no, (x, y) in vertices.items():
+        # Bolinha azul
+        raio = 3.5  # Um pouco maior para facilitar o hover do mouse
+        dot = QGraphicsEllipseItem(-raio, -raio, raio * 2, raio * 2)
+        dot.setBrush(brush_v_dot)
+        dot.setPen(QPen(Qt.PenStyle.NoPen))
+        dot.setPos(x, y)
+        dot.setFlag(QGraphicsEllipseItem.GraphicsItemFlag.ItemIgnoresTransformations)
+        
+        # Tooltip rico
+        tooltip = f"<div style='background-color: #2b2b2b; color: #DCE4EE; padding: 5px; border-radius: 4px;'>"
+        tooltip += f"<b>Vértice ID: {id_no}</b>"
+        if adj[id_no]:
+            tooltip += "<br>Conexões:"
+            # Limitar para não ficar gigante caso seja um hub muito conectado
+            for v, dist in adj[id_no][:8]:
+                tooltip += f"<br>&nbsp;&nbsp;➔ {v}: {dist:.1f} u.m."
+            if len(adj[id_no]) > 8:
+                tooltip += f"<br>&nbsp;&nbsp;... (+{len(adj[id_no]) - 8} arestas)"
+        tooltip += "</div>"
+        
+        dot.setToolTip(tooltip)
+        
+        dot.hide()
+        scene.addItem(dot)
+        labels.append(dot)
+        
+    return labels
+
+
 
 
 def draw_point(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], id_no: int, color: str, track_items: list):

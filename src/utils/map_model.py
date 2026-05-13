@@ -30,10 +30,20 @@ def load_poly(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
 
 
 def save_snapshot(path: Path, vertices: Dict[VertexId, Point], edges: List[Edge]) -> None:
+    max_id = max(vertices.keys()) if vertices else -1
+    total_to_write = max_id + 1
+    
     with path.open("w", encoding="utf-8") as f:
-        f.write(f"{len(vertices)}\t2\t0\t1\n")
-        for id_no, (x, y) in vertices.items():
-            f.write(f"{id_no}\t{str(x).replace('.', ',')}\t{str(y).replace('.', ',')}\t0\n")
+        # O Java usa o primeiro valor como tamanho do array e limite do loop de leitura.
+        # Para evitar ArrayIndexOutOfBounds e erros de leitura, preenchemos os gaps.
+        f.write(f"{total_to_write}\t2\t0\t1\n")
+        for i in range(total_to_write):
+            if i in vertices:
+                x, y = vertices[i]
+                f.write(f"{i}\t{str(x).replace('.', ',')}\t{str(y).replace('.', ',')}\t0\n")
+            else:
+                # Vértice "fantasma" para manter a integridade dos índices no Java
+                f.write(f"{i}\t0,0\t0,0\t0\n")
 
         f.write(f"{len(edges)}\t1\n")
         for i, (u, v) in enumerate(edges):
