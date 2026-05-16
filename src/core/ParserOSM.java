@@ -13,17 +13,17 @@ public class ParserOSM {
     private static final double RAIO_TERRA = 6378137.0; 
 
     public static Grafo carregar(String caminhoArquivo) throws Exception {
-        Map<Integer, Grafo.Vertice> verticesTemp = new HashMap<>();
-        List<List<Integer>> vias = new ArrayList<>();
+        Map<Long, Grafo.Vertice> verticesTemp = new HashMap<>();
+        List<List<Long>> vias = new ArrayList<>();
 
         try (BufferedReader br = new BufferedReader(new FileReader(caminhoArquivo))) {
             String linha;
-            List<Integer> viaAtual = null;
+            List<Long> viaAtual = null;
 
             while ((linha = br.readLine()) != null) {
                 // 1. Processa os Nós (Vértices)
                 if (linha.contains("<node")) {
-                    int id = extrairAtributoInt(linha, "id=");
+                    long id = extrairAtributoLong(linha, "id=");
                     double lat = extrairAtributoDouble(linha, "lat=");
                     double lon = extrairAtributoDouble(linha, "lon=");
 
@@ -42,7 +42,7 @@ public class ParserOSM {
                 
                 // 3. Processa os pontos de conexão dentro da Via
                 else if (linha.contains("<nd") && viaAtual != null) {
-                    int refId = extrairAtributoInt(linha, "ref=");
+                    long refId = extrairAtributoLong(linha, "ref=");
                     if (verticesTemp.containsKey(refId)) {
                         viaAtual.add(refId);
                     }
@@ -64,7 +64,7 @@ public class ParserOSM {
         // para economizar memória (RNF05).
         Grafo grafo = new Grafo(verticesTemp.size());
         
-        Map<Integer, Integer> mapaIds = new HashMap<>();
+        Map<Long, Integer> mapaIds = new HashMap<>();
         int novoId = 0;
         
         for (Grafo.Vertice vOriginal : verticesTemp.values()) {
@@ -74,10 +74,10 @@ public class ParserOSM {
         }
 
         // Adiciona as arestas convertendo os IDs originais para os novos índices
-        for (List<Integer> via : vias) {
+        for (List<Long> via : vias) {
             for (int i = 0; i < via.size() - 1; i++) {
-                int fromOriginal = via.get(i);
-                int toOriginal = via.get(i + 1);
+                long fromOriginal = via.get(i);
+                long toOriginal = via.get(i + 1);
                 
                 int fromInterno = mapaIds.get(fromOriginal);
                 int toInterno = mapaIds.get(toOriginal);
@@ -90,11 +90,11 @@ public class ParserOSM {
     }
 
     // Funções auxiliares para extrair os dados entre aspas do XML
-    private static int extrairAtributoInt(String linha, String atributo) {
+    private static long extrairAtributoLong(String linha, String atributo) {
         try {
-            return Integer.parseInt(extrairString(linha, atributo));
+            return Long.parseLong(extrairString(linha, atributo));
         } catch (Exception e) {
-            return -1;
+            return -1L;
         }
     }
 

@@ -1,5 +1,7 @@
 from pathlib import Path
 from typing import Dict, List, Tuple
+import xml.etree.ElementTree as ET
+import math
 
 VertexId = int
 Point = Tuple[float, float]
@@ -26,6 +28,60 @@ def load_poly(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
             v = int(partes[2])
             edges.append((u, v))
 
+    return vertices, edges
+
+
+def load_osm(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
+    vertices: Dict[VertexId, Point] = {}
+    edges: List[Edge] = []
+    
+    RAIO_TERRA = 6378137.0
+    
+    tree = ET.parse(path)
+    root = tree.getroot()
+    
+    vertices_temp = {}
+    
+    for node in root.findall('node'):
+        id_str = node.get('id')
+        lat_str = node.get('lat')
+        lon_str = node.get('lon')
+        if id_str and lat_str and lon_str:
+            id_no = int(id_str)
+            lat = float(lat_str)
+            lon = float(lon_str)
+            
+            x = RAIO_TERRA * math.radians(lon)
+            y = RAIO_TERRA * math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
+            
+            vertices_temp[id_no] = (x, y)
+            
+    mapa_ids = {}
+    novo_id = 0
+    for old_id, point in vertices_temp.items():
+        mapa_ids[old_id] = novo_id
+        vertices[novo_id] = point
+        novo_id += 1
+        
+    for way in root.findall('way'):
+        nds = way.findall('nd')
+        via = []
+        for nd in nds:
+            ref_str = nd.get('ref')
+            if ref_str:
+                ref = int(ref_str)
+                if ref in vertices_temp:
+                    via.append(ref)
+                    
+        for i in range(len(via) - 1):
+            from_orig = via[i]
+            to_orig = via[i+1]
+            
+            from_int = mapa_ids[from_orig]
+            to_int = mapa_ids[to_orig]
+            
+            edges.append((from_int, to_int))
+            
     return vertices, edges
 
 
