@@ -1,5 +1,5 @@
 import math
-from PyQt6.QtWidgets import QGraphicsView, QGraphicsEllipseItem, QGraphicsScene, QGraphicsSimpleTextItem, QGraphicsObject
+from PyQt6.QtWidgets import QGraphicsView, QGraphicsEllipseItem, QGraphicsScene, QGraphicsObject
 from PyQt6.QtGui import QBrush, QFont, QPainter, QPainterPath, QPen, QColor
 from PyQt6.QtCore import Qt, QTimer, QRectF
 

@@ -2,9 +2,9 @@ import sys
 from pathlib import Path
 
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
-                             QHBoxLayout, QPushButton, QLabel, QGraphicsView,
-                             QGraphicsScene, QFrame, QGraphicsEllipseItem, QFileDialog)
-from PyQt6.QtGui import QPen, QColor, QBrush, QPainter, QFont, QPainterPath, QIcon, QPixmap
+                             QHBoxLayout, QPushButton, QLabel, QGraphicsScene, 
+                             QFrame, QFileDialog)
+from PyQt6.QtGui import QColor, QBrush, QFont
 from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QTimer
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -493,9 +493,6 @@ class MinRouteApp(QMainWindow):
                 self.desenhar_ponto(self.origem, "#ff4c4c")
                 self.lbl_origem.setText(f"Origem: Vértice {self.origem}")
 
-    def desenhar_ponto_permanente(self, x, y, cor):
-        draw_permanent_point(self.scene, x, y, cor)
-
     def desenhar_ponto(self, id_no, cor):
         draw_point(self.scene, self.vertices, id_no, cor, self.itens_rota)
 
@@ -522,7 +519,6 @@ class MinRouteApp(QMainWindow):
         except Exception as e:
             self.update_status("Erro ao calcular rota. Veja o console para detalhes.", sucesso=False)
             self.notification.show_message(f"Erro: {str(e)}", sucesso=False)
-            print(f"Erro na integração: {e}")
 
     def limpar_rota(self):
         for item in self.itens_rota:
@@ -540,7 +536,6 @@ class MinRouteApp(QMainWindow):
     def copiar_imagem(self):
         QApplication.clipboard().setPixmap(self.view.grab())
         self.notification.show_message("Imagem copiada para a área de transferência!", sucesso=True)
-        print("Copiado!")
 
 
 if __name__ == "__main__":

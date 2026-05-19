@@ -16,11 +16,11 @@ public class Grafo {
     }
 
     public static class Vertice {
-        public int id;
+        public long id;
         public double x, y;
         public List<Aresta> vizinhos;
 
-        public Vertice(int id, double x, double y) {
+        public Vertice(long id, double x, double y) {
             this.id = id;
             this.x = x;
             this.y = y;
@@ -41,6 +41,11 @@ public class Grafo {
     }
 
     public void adicionarArestaBidirecional(int origem, int destino) {
+        if (origem >= vertices.length || destino >= vertices.length || 
+            vertices[origem] == null || vertices[destino] == null) {
+            return;
+        }
+        
         // Calcula a distância euclidiana automaticamente ao criar a aresta
         double peso = calcularDistancia(vertices[origem], vertices[destino]);
         vertices[origem].vizinhos.add(new Aresta(destino, peso));

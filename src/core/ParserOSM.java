@@ -36,12 +36,12 @@ public class ParserOSM {
                 }
                 
                 // 2. Processa o início de uma Via (Arestas)
-                else if (linha.contains("<way")) {
+                if (linha.contains("<way")) {
                     viaAtual = new ArrayList<>();
                 }
                 
                 // 3. Processa os pontos de conexão dentro da Via
-                else if (linha.contains("<nd") && viaAtual != null) {
+                if (linha.contains("<nd") && viaAtual != null) {
                     long refId = extrairAtributoLong(linha, "ref=");
                     if (verticesTemp.containsKey(refId)) {
                         viaAtual.add(refId);
@@ -49,7 +49,7 @@ public class ParserOSM {
                 }
                 
                 // 4. Finaliza a Via
-                else if (linha.contains("</way>") && viaAtual != null) {
+                if (linha.contains("</way>") && viaAtual != null) {
                     if (viaAtual.size() > 1) {
                         vias.add(viaAtual);
                     }
@@ -59,9 +59,6 @@ public class ParserOSM {
         }
 
         // 5. Monta o Grafo final
-        // Descobrimos o "maior ID" para inicializar o array do Grafo.
-        // Como IDs do OSM são gigantes, vamos "achatar" os IDs para índices de 0 a N
-        // para economizar memória (RNF05).
         Grafo grafo = new Grafo(verticesTemp.size());
         
         Map<Long, Integer> mapaIds = new HashMap<>();
@@ -79,10 +76,12 @@ public class ParserOSM {
                 long fromOriginal = via.get(i);
                 long toOriginal = via.get(i + 1);
                 
-                int fromInterno = mapaIds.get(fromOriginal);
-                int toInterno = mapaIds.get(toOriginal);
+                Integer fromInterno = mapaIds.get(fromOriginal);
+                Integer toInterno = mapaIds.get(toOriginal);
                 
-                grafo.adicionarArestaBidirecional(fromInterno, toInterno);
+                if (fromInterno != null && toInterno != null) {
+                    grafo.adicionarArestaBidirecional(fromInterno, toInterno);
+                }
             }
         }
 

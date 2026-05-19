@@ -13,20 +13,34 @@ def load_poly(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
     edges: List[Edge] = []
 
     with path.open("r", encoding="utf-8") as f:
-        total_vertices = int(f.readline().split()[0])
+        linhas = [l.strip() for l in f.readlines() if l.strip()]
+        if not linhas:
+            return {}, []
+            
+        idx = 0
+        total_vertices = int(linhas[idx].split()[0])
+        idx += 1
         for _ in range(total_vertices):
-            partes = f.readline().split()
+            if idx >= len(linhas): break
+            partes = linhas[idx].split()
             id_no = int(partes[0])
             x = float(partes[1].replace(",", "."))
             y = float(partes[2].replace(",", "."))
             vertices[id_no] = (x, y)
-
-        total_arestas = int(f.readline().split()[0])
+            idx += 1
+            
+        if idx >= len(linhas): return vertices, edges
+        
+        total_arestas = int(linhas[idx].split()[0])
+        idx += 1
         for _ in range(total_arestas):
-            partes = f.readline().split()
-            u = int(partes[1])
-            v = int(partes[2])
-            edges.append((u, v))
+            if idx >= len(linhas): break
+            partes = linhas[idx].split()
+            if len(partes) >= 3:
+                u = int(partes[1])
+                v = int(partes[2])
+                edges.append((u, v))
+            idx += 1
 
     return vertices, edges
 
