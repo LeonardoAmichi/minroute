@@ -54,6 +54,16 @@ public class Grafo {
         vertices[destino].vizinhos.add(new Aresta(origem, peso));
     }
 
+    public void adicionarArestaDirecionada(int origem, int destino) {
+        if (origem >= vertices.length || destino >= vertices.length || 
+            vertices[origem] == null || vertices[destino] == null) {
+            return;
+        }
+        
+        double peso = calcularDistancia(vertices[origem], vertices[destino]);
+        vertices[origem].vizinhos.add(new Aresta(destino, peso));
+    }
+
     private double calcularDistancia(Vertice v1, Vertice v2) {
         return Math.sqrt(Math.pow(v1.x - v2.x, 2) + Math.pow(v1.y - v2.y, 2));
     }

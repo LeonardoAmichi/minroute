@@ -3,15 +3,15 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QGraphicsScene, 
-                             QFrame, QFileDialog)
-from PyQt6.QtGui import QColor, QBrush, QFont
+                             QFrame, QFileDialog, QCheckBox)
+from PyQt6.QtGui import QColor, QBrush, QFont, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QTimer
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from utils.map_model import create_vertex, find_nearest_vertex, load_poly, load_osm, save_snapshot
+from utils.map_model import create_vertex, find_nearest_vertex, load_poly, load_osm, load_txt, save_snapshot
 from utils.java_bridge import run_dijkstra
 from ui.renderer import (MapGraphicsView, draw_map, draw_point, draw_route, draw_labels)
 from ui.icons import IconFactory
@@ -110,6 +110,10 @@ class MinRouteApp(QMainWindow):
         self.configurar_layout()
         self.notification = NotificationWidget(self.view)
         self.mostrar_estado_vazio()
+
+        # Atalho de teclado: Ctrl+C para traçar menor caminho (conforme documentação)
+        atalho_tracar = QShortcut(QKeySequence("Ctrl+C"), self)
+        atalho_tracar.activated.connect(self.tracar_caminho)
 
     def configurar_layout(self):
         central_widget = QWidget()
@@ -245,6 +249,14 @@ class MinRouteApp(QMainWindow):
         self.btn_rotulos.toggled.connect(self.alternar_rotulos)
         layout_sidebar.addWidget(self.btn_rotulos)
 
+        self.cb_mao_unica = QCheckBox("Criar Via de Mão Única")
+        self.cb_mao_unica.setStyleSheet("""
+            QCheckBox { color: #DCE4EE; font-size: 12px; margin-top: 5px; border: none; }
+            QCheckBox::indicator { width: 14px; height: 14px; }
+        """)
+        self.cb_mao_unica.hide()
+        layout_sidebar.addWidget(self.cb_mao_unica)
+
         # ── SEÇÃO: Exportação ──
         layout_sidebar.addWidget(self._criar_separador())
         lbl_export = QLabel("EXPORTAÇÃO")
@@ -368,6 +380,8 @@ class MinRouteApp(QMainWindow):
         try:
             if mapa_path.suffix.lower() in ['.osm', '.xml']:
                 self.vertices, self.todas_arestas = load_osm(mapa_path)
+            elif mapa_path.suffix.lower() == '.txt':
+                self.vertices, self.todas_arestas = load_txt(mapa_path)
             else:
                 self.vertices, self.todas_arestas = load_poly(mapa_path)
             self.lbl_vertices_count.setText(f"Vértices: {len(self.vertices):,}")
@@ -419,38 +433,50 @@ class MinRouteApp(QMainWindow):
             self.btn_edicao.setText("Desativar Modo Edição")
             self.limpar_rota()
             self.update_status("Modo edição ativado. Clique para criar ou conectar nós.")
+            self.cb_mao_unica.show()
         else:
             self.btn_edicao.setText("Ativar Modo Edição")
             self.no_edicao_selecionado = None
             self.update_status("Clique no mapa para definir origem e destino.")
+            self.cb_mao_unica.hide()
 
     def update_status(self, mensagem: str, sucesso: bool = True):
         # Exibe popup apenas para encontrar rota ou não encontrar
         if "encontrada" in mensagem.lower() or "nenhum" in mensagem.lower():
             self.notification.show_message(mensagem, sucesso)
 
-    def ao_clicar_mapa(self, x_clique, y_clique, shift_pressed=False):
+    def ao_duplo_clique_mapa(self, x_clique, y_clique):
+        if not self.modo_edicao_ativo:
+            return
+            
+        no_mais_proximo, menor_dist_sq = find_nearest_vertex(self.vertices, x_clique, y_clique)
+        zoom = self.view.transform().m11()
+        clicou_no_vazio = menor_dist_sq > (18 / zoom) ** 2
+        
+        if not clicou_no_vazio:
+            # Remover o vértice e todas as arestas conectadas a ele
+            if no_mais_proximo in self.vertices:
+                del self.vertices[no_mais_proximo]
+            self.todas_arestas = [
+                edge for edge in self.todas_arestas 
+                if edge[0] != no_mais_proximo and edge[1] != no_mais_proximo
+            ]
+            self.vertices_edicao.discard(no_mais_proximo)
+            if self.no_edicao_selecionado == no_mais_proximo:
+                self.no_edicao_selecionado = None
+            self.redesenhar_mapa_completo(reset_view=False)
+            self.notification.show_message(f"Vértice {no_mais_proximo} removido via duplo clique.", sucesso=True)
+
+    def ao_clicar_mapa(self, x_clique, y_clique):
         no_mais_proximo, menor_dist_sq = find_nearest_vertex(self.vertices, x_clique, y_clique)
         zoom = self.view.transform().m11()
         clicou_no_vazio = menor_dist_sq > (18 / zoom) ** 2
 
         if self.modo_edicao_ativo:
-            if shift_pressed and not clicou_no_vazio:
-                # Remover o vértice e todas as arestas conectadas a ele
-                if no_mais_proximo in self.vertices:
-                    del self.vertices[no_mais_proximo]
-                self.todas_arestas = [
-                    (u, v) for u, v in self.todas_arestas 
-                    if u != no_mais_proximo and v != no_mais_proximo
-                ]
-                self.vertices_edicao.discard(no_mais_proximo)
-                if self.no_edicao_selecionado == no_mais_proximo:
-                    self.no_edicao_selecionado = None
-                self.redesenhar_mapa_completo(reset_view=False)
-                self.notification.show_message(f"Vértice {no_mais_proximo} removido.", sucesso=True)
-                return
-
             if clicou_no_vazio:
+                if menor_dist_sq < 1e-4:
+                    self.notification.show_message("Não é possível colocar dois vértices no mesmo lugar.", sucesso=False)
+                    return
                 novo_id = create_vertex(self.vertices, x_clique, y_clique)
                 self.vertices_edicao.add(novo_id)
                 self.redesenhar_mapa_completo(reset_view=False)
@@ -470,7 +496,8 @@ class MinRouteApp(QMainWindow):
                     self.notification.show_message("Seleção cancelada.", sucesso=True)
                 else:
                     # Segundo clique: criar aresta
-                    self.todas_arestas.append((self.no_edicao_selecionado, no_mais_proximo))
+                    is_bidir = not self.cb_mao_unica.isChecked()
+                    self.todas_arestas.append((self.no_edicao_selecionado, no_mais_proximo, is_bidir))
                     self.vertices_edicao.add(self.no_edicao_selecionado)
                     self.no_edicao_selecionado = None
                     self.redesenhar_mapa_completo(reset_view=False)
@@ -509,13 +536,54 @@ class MinRouteApp(QMainWindow):
 
             caminho = dados.get("caminho", [])
             if caminho:
+                # Validação extra no Python para evitar ghost routes na contramão
+                rota_valida = True
+                for i in range(len(caminho) - 1):
+                    u = caminho[i]
+                    v = caminho[i+1]
+                    aresta_encontrada = False
+                    for edge in self.todas_arestas:
+                        eu, ev = edge[0], edge[1]
+                        bidir = True
+                        if len(edge) >= 3:
+                            bidir = edge[2]
+                        if (eu == u and ev == v) or (bidir and eu == v and ev == u):
+                            aresta_encontrada = True
+                            break
+                    if not aresta_encontrada:
+                        rota_valida = False
+                        break
+                
+                if not rota_valida:
+                    caminho = []
+                    dados["caminho"] = []
+
+            if caminho:
                 draw_route(self.scene, self.vertices, caminho, self.itens_rota)
                 self.lbl_tempo.setText(f"Tempo: {dados['tempo_ms']} ms")
                 self.lbl_nos.setText(f"Nós explorados: {dados['nos_explorados']}")
                 self.lbl_custo.setText(f"Distância: {dados['distancia_total']:.2f} u.m.")
                 self.update_status("Rota encontrada com sucesso.")
             else:
-                self.update_status("Nenhum caminho possível entre os pontos selecionados.", sucesso=False)
+                # Tenta o caminho reverso para detectar bloqueio por mão única
+                try:
+                    dados_reverso = run_dijkstra(java_cp, Path(self.caminho_mapa_editado), self.destino, self.origem)
+                    caminho_reverso = dados_reverso.get("caminho", [])
+                except Exception:
+                    caminho_reverso = []
+
+                if caminho_reverso:
+                    # Caminho reverso existe → bloqueio por mão única
+                    self.notification.show_message(
+                        "Caminho bloqueado por via(s) de mão única! Tente inverter origem e destino.",
+                        sucesso=False
+                    )
+                else:
+                    # Nenhuma direção funciona → nós desconectados
+                    self.notification.show_message(
+                        "Nenhum caminho possível entre os pontos selecionados.",
+                        sucesso=False
+                    )
         except Exception as e:
             self.update_status("Erro ao calcular rota. Veja o console para detalhes.", sucesso=False)
             self.notification.show_message(f"Erro: {str(e)}", sucesso=False)

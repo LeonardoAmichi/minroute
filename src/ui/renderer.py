@@ -26,8 +26,7 @@ class MapGraphicsView(QGraphicsView):
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
         elif event.button() == Qt.MouseButton.LeftButton:
             scene_pos = self.mapToScene(event.pos())
-            shift_pressed = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
-            self.app_window.ao_clicar_mapa(scene_pos.x(), scene_pos.y(), shift_pressed)
+            self.app_window.ao_clicar_mapa(scene_pos.x(), scene_pos.y())
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -43,6 +42,14 @@ class MapGraphicsView(QGraphicsView):
             self._last_pan_pos = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
         super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            scene_pos = self.mapToScene(event.pos())
+            # Chama novo método no app.py para tratar o duplo clique (deletar)
+            if hasattr(self.app_window, 'ao_duplo_clique_mapa'):
+                self.app_window.ao_duplo_clique_mapa(scene_pos.x(), scene_pos.y())
+        super().mouseDoubleClickEvent(event)
 
 
 class PulsingDot(QGraphicsObject):
@@ -98,34 +105,73 @@ class PulsingDot(QGraphicsObject):
         self._timer.stop()
 
 
-def draw_map(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], edges: list[tuple[int, int]]):
+def draw_map(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], edges: list):
     pen_rua = QPen(QColor("#4c566a"))
     pen_rua.setWidthF(1.2)
     pen_rua.setCosmetic(True)
 
-    path_mapa = QPainterPath()
-    for u, v in edges:
+    path_ruas = QPainterPath()
+    setas_oneway = []  # Lista de (cx, cy, angle) para desenhar setas depois
+
+    for edge in edges:
+        u = edge[0]
+        v = edge[1]
+        is_bidirectional = True
+        if len(edge) >= 3:
+            is_bidirectional = edge[2]
+
         if u in vertices and v in vertices:
             x1, y1 = vertices[u]
             x2, y2 = vertices[v]
-            path_mapa.moveTo(x1, y1)
-            path_mapa.lineTo(x2, y2)
+            
+            path_ruas.moveTo(x1, y1)
+            path_ruas.lineTo(x2, y2)
+            
+            # Apenas vias de mão única recebem setas
+            if not is_bidirectional:
+                dx = x2 - x1
+                dy = y2 - y1
+                dist = math.hypot(dx, dy)
+                if dist > 0:
+                    cx = x1 + dx / 2
+                    cy = y1 + dy / 2
+                    angle = math.atan2(dy, dx)
+                    
+                    # Tamanho da seta é 15% do tamanho da rua, para não ficar gigante em mapas de escala pequena
+                    size = dist * 0.15
+                    
+                    setas_oneway.append((cx, cy, angle, size))
 
-    return scene.addPath(path_mapa, pen_rua)
+    scene.addPath(path_ruas, pen_rua)
+    
+    # Desenhar setas discretas de mão única
+    if setas_oneway:
+        path_setas = QPainterPath()
+        for cx, cy, angle, size in setas_oneway:
+            path_setas.moveTo(cx + size * math.cos(angle), cy + size * math.sin(angle))
+            path_setas.lineTo(cx + size * math.cos(angle + 2.5), cy + size * math.sin(angle + 2.5))
+            path_setas.lineTo(cx + size * math.cos(angle - 2.5), cy + size * math.sin(angle - 2.5))
+            path_setas.closeSubpath()
+        
+        item_setas = scene.addPath(path_setas, QPen(Qt.PenStyle.NoPen))
+        item_setas.setBrush(QBrush(QColor(120, 130, 150, 160)))  # Cinza-azulado discreto com transparência
 
 
-def draw_labels(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], edges: list[tuple[int, int]]):
+def draw_labels(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], edges: list):
     labels = []
 
     # Pré-calcular conexões e distâncias para o tooltip
     adj = {vid: [] for vid in vertices}
-    for u, v in edges:
+    for edge in edges:
+        u = edge[0]
+        v = edge[1]
         if u in vertices and v in vertices:
             x1, y1 = vertices[u]
             x2, y2 = vertices[v]
             dist = math.hypot(x1 - x2, y1 - y2)
             adj[u].append((v, dist))
-            adj[v].append((u, dist)) # Assumindo grafo bidirecional visualmente
+            # O tooltip vai mostrar conexões para ambos os lados simplificadamente
+            adj[v].append((u, dist)) 
 
     brush_v_dot = QBrush(QColor("#5e81ac"))
 
@@ -145,7 +191,7 @@ def draw_labels(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]],
             tooltip += "<br>Conexões:"
             # Limitar para não ficar gigante caso seja um hub muito conectado
             for v, dist in adj[id_no][:8]:
-                tooltip += f"<br>&nbsp;&nbsp;➔ {v}: {dist:.1f} u.m."
+                tooltip += f"<br>&nbsp;&nbsp;➔ Vértice {v} (Peso: {dist:.1f} u.m.)"
             if len(adj[id_no]) > 8:
                 tooltip += f"<br>&nbsp;&nbsp;... (+{len(adj[id_no]) - 8} arestas)"
         tooltip += "</div>"
@@ -169,11 +215,13 @@ def draw_point(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], 
 
 
 def draw_route(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], caminho: list[int], track_items: list):
-    """Desenha a rota com gradiente de cor: vermelho (origem) → verde (destino)."""
+    """Desenha a rota com gradiente de cor: vermelho (origem) → verde (destino), com setas de direção."""
     if len(caminho) < 2:
         return
 
     total_segments = len(caminho) - 1
+    # Intervalo entre setas: a cada N segmentos (mínimo 1)
+    intervalo_setas = max(1, total_segments // 12)
 
     for i in range(total_segments):
         if total_segments == 1:
@@ -196,3 +244,47 @@ def draw_route(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], 
 
         line = scene.addLine(x1, y1, x2, y2, pen)
         track_items.append(line)
+
+        # Desenhar seta de direção a cada N segmentos
+        if i % intervalo_setas == 0:
+            dx = x2 - x1
+            dy = y2 - y1
+            dist = math.hypot(dx, dy)
+            if dist > 0:
+                cx = x1 + dx * 0.55
+                cy = y1 + dy * 0.55
+                angle = math.atan2(dy, dx)
+
+                arrow_size = 6.0
+                # Triângulo apontando na direção do caminho
+                p1x = cx + arrow_size * math.cos(angle)
+                p1y = cy + arrow_size * math.sin(angle)
+                p2x = cx + arrow_size * math.cos(angle + 2.5)
+                p2y = cy + arrow_size * math.sin(angle + 2.5)
+                p3x = cx + arrow_size * math.cos(angle - 2.5)
+                p3y = cy + arrow_size * math.sin(angle - 2.5)
+
+                arrow_path = QPainterPath()
+                arrow_path.moveTo(p1x, p1y)
+                arrow_path.lineTo(p2x, p2y)
+                arrow_path.lineTo(p3x, p3y)
+                arrow_path.closeSubpath()
+
+                arrow_item = scene.addPath(arrow_path, QPen(Qt.PenStyle.NoPen))
+                arrow_item.setBrush(QBrush(color))
+                arrow_item.setFlag(arrow_item.GraphicsItemFlag.ItemIgnoresTransformations)
+                arrow_item.setPos(cx, cy)
+                # Corrigir posição: como ItemIgnoresTransformations usa pos como âncora,
+                # precisamos que o path seja relativo à origem
+                arrow_path_rel = QPainterPath()
+                arrow_path_rel.moveTo(arrow_size * math.cos(angle), arrow_size * math.sin(angle))
+                arrow_path_rel.lineTo(arrow_size * math.cos(angle + 2.5), arrow_size * math.sin(angle + 2.5))
+                arrow_path_rel.lineTo(arrow_size * math.cos(angle - 2.5), arrow_size * math.sin(angle - 2.5))
+                arrow_path_rel.closeSubpath()
+
+                scene.removeItem(arrow_item)
+                arrow_item = scene.addPath(arrow_path_rel, QPen(Qt.PenStyle.NoPen))
+                arrow_item.setBrush(QBrush(color))
+                arrow_item.setFlag(arrow_item.GraphicsItemFlag.ItemIgnoresTransformations)
+                arrow_item.setPos(cx, cy)
+                track_items.append(arrow_item)

@@ -5,7 +5,51 @@ import math
 
 VertexId = int
 Point = Tuple[float, float]
-Edge = Tuple[int, int]
+Edge = Tuple[int, int, bool]
+
+
+def load_txt(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
+    vertices: Dict[VertexId, Point] = {}
+    edges: List[Edge] = []
+
+    with path.open("r", encoding="utf-8") as f:
+        linhas = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#")]
+        if not linhas:
+            return {}, []
+            
+        partes_cabecalho = linhas[0].split()
+        if len(partes_cabecalho) < 2:
+            return {}, []
+            
+        n = int(partes_cabecalho[0])
+        m = int(partes_cabecalho[1])
+        
+        idx = 1
+        # Ler vértices
+        for _ in range(n):
+            if idx >= len(linhas): break
+            partes = linhas[idx].split()
+            if len(partes) >= 3:
+                id_no = int(partes[0])
+                x = float(partes[1].replace(",", "."))
+                y = float(partes[2].replace(",", "."))
+                vertices[id_no] = (x, y)
+            idx += 1
+            
+        # Ler arestas
+        for _ in range(m):
+            if idx >= len(linhas): break
+            partes = linhas[idx].split()
+            if len(partes) >= 2:
+                u = int(partes[0])
+                v = int(partes[1])
+                is_bidirectional = True
+                if len(partes) >= 3:
+                    is_bidirectional = (int(partes[2]) == 0)
+                edges.append((u, v, is_bidirectional))
+            idx += 1
+
+    return vertices, edges
 
 
 def load_poly(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
@@ -39,7 +83,10 @@ def load_poly(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
             if len(partes) >= 3:
                 u = int(partes[1])
                 v = int(partes[2])
-                edges.append((u, v))
+                is_bidirectional = True
+                if len(partes) >= 4:
+                    is_bidirectional = (int(partes[3]) == 0)
+                edges.append((u, v, is_bidirectional))
             idx += 1
 
     return vertices, edges
@@ -87,6 +134,15 @@ def load_osm(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
                 if ref in vertices_temp:
                     via.append(ref)
                     
+        oneway_val = 0
+        for tag in way.findall('tag'):
+            if tag.get('k') == 'oneway':
+                v = tag.get('v')
+                if v in ('yes', 'true', '1'):
+                    oneway_val = 1
+                elif v in ('-1', 'reverse'):
+                    oneway_val = -1
+                    
         for i in range(len(via) - 1):
             from_orig = via[i]
             to_orig = via[i+1]
@@ -94,12 +150,18 @@ def load_osm(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
             from_int = mapa_ids[from_orig]
             to_int = mapa_ids[to_orig]
             
-            edges.append((from_int, to_int))
+            if oneway_val == 1:
+                edges.append((from_int, to_int, False))
+            elif oneway_val == -1:
+                edges.append((to_int, from_int, False))
+            else:
+                edges.append((from_int, to_int, True))
             
     return vertices, edges
 
 
 def save_snapshot(path: Path, vertices: Dict[VertexId, Point], edges: List[Edge]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     max_id = max(vertices.keys()) if vertices else -1
     total_to_write = max_id + 1
     
@@ -116,8 +178,13 @@ def save_snapshot(path: Path, vertices: Dict[VertexId, Point], edges: List[Edge]
                 f.write(f"{i}\t0,0\t0,0\t0\n")
 
         f.write(f"{len(edges)}\t1\n")
-        for i, (u, v) in enumerate(edges):
-            f.write(f"{i}\t{u}\t{v}\t0\n")
+        for i, edge in enumerate(edges):
+            u, v = edge[0], edge[1]
+            is_bidirectional = True
+            if len(edge) >= 3:
+                is_bidirectional = edge[2]
+            direcional_flag = 0 if is_bidirectional else 1
+            f.write(f"{i}\t{u}\t{v}\t{direcional_flag}\n")
         f.write("0")
 
 

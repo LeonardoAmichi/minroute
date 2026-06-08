@@ -40,7 +40,16 @@ public class ParserPoly {
                 int from = Integer.parseInt(partes[1]);
                 int to = Integer.parseInt(partes[2]);
                 
-                grafo.adicionarArestaBidirecional(from, to);
+                int direcional = 0;
+                if (partes.length >= 4) {
+                    direcional = Integer.parseInt(partes[3]);
+                }
+                
+                if (direcional == 1) {
+                    grafo.adicionarArestaDirecionada(from, to);
+                } else {
+                    grafo.adicionarArestaBidirecional(from, to);
+                }
             }
             
             return grafo;

@@ -14,5 +14,9 @@ def run_dijkstra(java_cp: Path, snapshot_path: Path, origem: int, destino: int) 
         str(destino),
     ]
 
-    resultado = subprocess.run(comando, capture_output=True, text=True, check=True)
-    return json.loads(resultado.stdout)
+    try:
+        resultado = subprocess.run(comando, capture_output=True, text=True, check=True)
+        return json.loads(resultado.stdout)
+    except subprocess.CalledProcessError as e:
+        mensagem = e.stderr.strip() if e.stderr else str(e)
+        raise RuntimeError(mensagem)

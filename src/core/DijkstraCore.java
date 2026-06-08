@@ -32,8 +32,10 @@ public class DijkstraCore {
             String caminhoArquivo = args[0];
             Grafo grafo;
             
-            if (caminhoArquivo.toLowerCase().endsWith(".osm")) {
+            if (caminhoArquivo.toLowerCase().endsWith(".osm") || caminhoArquivo.toLowerCase().endsWith(".xml")) {
                 grafo = ParserOSM.carregar(caminhoArquivo);
+            } else if (caminhoArquivo.toLowerCase().endsWith(".txt")) {
+                grafo = ParserTXT.parse(caminhoArquivo);
             } else {
                 grafo = ParserPoly.carregar(caminhoArquivo);
             }
