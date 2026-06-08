@@ -7,7 +7,11 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtGui import QColor, QBrush, QFont, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QTimer
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
+if getattr(sys, 'frozen', False):
+    ROOT_DIR = Path(sys._MEIPASS) / "src"
+else:
+    ROOT_DIR = Path(__file__).resolve().parents[1]
+    
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
@@ -530,7 +534,10 @@ class MinRouteApp(QMainWindow):
         try:
             save_snapshot(Path(self.caminho_mapa_editado), self.vertices, self.todas_arestas)
 
-            projeto_root = Path(__file__).resolve().parents[2]
+            if getattr(sys, 'frozen', False):
+                projeto_root = Path(sys._MEIPASS)
+            else:
+                projeto_root = Path(__file__).resolve().parents[2]
             java_cp = projeto_root / "build" / "classes"
             dados = run_dijkstra(java_cp, Path(self.caminho_mapa_editado), self.origem, self.destino)
 
