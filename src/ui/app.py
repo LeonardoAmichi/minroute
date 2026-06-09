@@ -1,5 +1,6 @@
 import sys
 from pathlib import Path
+import tempfile
 
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QHBoxLayout, QPushButton, QLabel, QGraphicsScene, 
@@ -22,6 +23,10 @@ from ui.icons import IconFactory
 
 
 class NotificationWidget(QWidget):
+    """
+    Um pequeno widget flutuante e animado que aparece no topo da tela 
+    para dar avisos de sucesso ou de erro (tipo os toast notifications de celular).
+    """
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
@@ -91,13 +96,18 @@ class NotificationWidget(QWidget):
 
 
 class MinRouteApp(QMainWindow):
+    """
+    O Coração da Aplicação Visual! 
+    É aqui que juntamos todas as peças: a barra lateral com os botões, 
+    o mapa interativo no centro, e todas as ações que o usuário pode fazer.
+    """
     def __init__(self):
         super().__init__()
         self.setWindowTitle("MinRoute - Sistema de Navegação (Motor Qt)")
         self.resize(1100, 700)
 
         self.caminho_mapa_original = None
-        self.caminho_mapa_editado = "data/mapa_editado.poly"
+        self.caminho_mapa_editado = Path(tempfile.gettempdir()) / "minroute_mapa_editado.poly"
 
         self.vertices = {}
         self.todas_arestas = []
@@ -120,6 +130,10 @@ class MinRouteApp(QMainWindow):
         atalho_tracar.activated.connect(self.tracar_caminho)
 
     def configurar_layout(self):
+        """
+        Monta a carinha do programa. Cria a barra lateral elegante e posiciona
+        o mapa no espaço restante. Define cores, botões e textos.
+        """
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         layout_principal = QHBoxLayout(central_widget)
@@ -342,6 +356,10 @@ class MinRouteApp(QMainWindow):
         ))
 
     def importar_mapa(self):
+        """
+        Abre a janelinha do Windows para o usuário escolher o arquivo do mapa.
+        Se ele escolher, já tentamos desenhar na tela!
+        """
         arquivo, _ = QFileDialog.getOpenFileName(
             self,
             "Importar Mapa",
@@ -373,6 +391,10 @@ class MinRouteApp(QMainWindow):
         self.notification.show_message("Mapa removido.", sucesso=True)
 
     def carregar_e_desenhar_mapa(self):
+        """
+        Identifica o tipo de mapa (.poly, .osm, .txt) e usa as ferramentas 
+        adequadas para ler o arquivo e desenhá-lo na tela.
+        """
         if not self.caminho_mapa_original:
             return
 
@@ -396,10 +418,17 @@ class MinRouteApp(QMainWindow):
             print(f"Erro ao carregar mapa: {e}")
 
     def redesenhar_mapa_completo(self, reset_view=False):
+        # Guardamos a origem e destino atuais para não perdermos a seleção ao atualizar o mapa
+        origem_temp = self.origem
+        destino_temp = self.destino
+        
         self.scene.clear()
         self.itens_rota.clear()
         self.labels.clear()
-        self.origem = self.destino = None
+        
+        # Recuperamos o estado
+        self.origem = origem_temp
+        self.destino = destino_temp
         
         draw_map(self.scene, self.vertices, self.todas_arestas)
         
@@ -414,6 +443,21 @@ class MinRouteApp(QMainWindow):
             for vid in self.vertices_edicao:
                 if vid in self.vertices:
                     self.desenhar_ponto(vid, "#b48ead") # Lilás para edição
+                    
+        # Redesenhando os pontos de Origem e Destino, caso ainda existam no grafo
+        if self.origem is not None:
+            if self.origem in self.vertices:
+                self.desenhar_ponto(self.origem, "#ff4c4c")
+            else:
+                self.origem = None
+                self.lbl_origem.setText("Origem: --")
+
+        if self.destino is not None:
+            if self.destino in self.vertices:
+                self.desenhar_ponto(self.destino, "#50fa7b")
+            else:
+                self.destino = None
+                self.lbl_destino.setText("Destino: --")
             
         if reset_view:
             rect = self.scene.itemsBoundingRect()
@@ -450,6 +494,10 @@ class MinRouteApp(QMainWindow):
             self.notification.show_message(mensagem, sucesso)
 
     def ao_duplo_clique_mapa(self, x_clique, y_clique):
+        """
+        Apaga um vértice e todas as ruas conectadas a ele quando o usuário 
+        dá um duplo clique com a borracha (se estiver no modo edição).
+        """
         if not self.modo_edicao_ativo:
             return
             
@@ -458,7 +506,7 @@ class MinRouteApp(QMainWindow):
         clicou_no_vazio = menor_dist_sq > (18 / zoom) ** 2
         
         if not clicou_no_vazio:
-            # Remover o vértice e todas as arestas conectadas a ele
+            # Se a gente excluiu o nó que estava selecionado para criar aresta, limpa a seleção
             if no_mais_proximo in self.vertices:
                 del self.vertices[no_mais_proximo]
             self.todas_arestas = [
@@ -468,6 +516,7 @@ class MinRouteApp(QMainWindow):
             self.vertices_edicao.discard(no_mais_proximo)
             if self.no_edicao_selecionado == no_mais_proximo:
                 self.no_edicao_selecionado = None
+                
             self.redesenhar_mapa_completo(reset_view=False)
             self.notification.show_message(f"Vértice {no_mais_proximo} removido via duplo clique.", sucesso=True)
 
@@ -528,6 +577,10 @@ class MinRouteApp(QMainWindow):
         draw_point(self.scene, self.vertices, id_no, cor, self.itens_rota)
 
     def tracar_caminho(self):
+        """
+        Aqui a mágica acontece! Salva o estado atual do mapa em um arquivo temporário,
+        chama o Algoritmo de Dijkstra lá do Java e desenha a resposta na tela.
+        """
         if self.origem is None or self.destino is None:
             return
 
