@@ -27,7 +27,7 @@ O projeto adota uma arquitetura em dois processos (IPC) para maximizar a eficiê
 
 ```text
 minroute/
-├── Documentacao/       # Especificação técnica formal e PDF
+├── docs/               # Especificação técnica formal e PDF
 ├── data/               # Arquivos de mapas base (.poly, .osm) (gerenciado dinamicamente)
 ├── src/
 │   ├── core/           # Código-fonte Java (Abstração do Grafo, Parsers e Dijkstra)
@@ -60,7 +60,7 @@ minroute/
 3. **Compile os binários do motor de busca Java:**
    Na raiz do projeto, garanta que os `.class` existam no diretório build:
    ```bash
-   javac -d build/classes src/core/*.java
+    javac --release 11 -d build/classes src/core/*.java
    ```
 
 4. **Inicie o Sistema:**
@@ -68,7 +68,7 @@ minroute/
    python src/ui/app.py
    ```
 
-*(Alternativa Autônoma)*: O projeto disponibiliza o arquivo empacotado `Setup.exe` isolado nos artefatos finais para simplificar a distribuição onde não há ecossistema de compilação acessível.
+*(Alternativa Autônoma)*: O projeto disponibiliza a pasta empacotada `dist/MinRoute/` contendo o `MinRoute.exe` com JRE portátil embutido, dispensando a instalação de Java e Python na máquina de destino.
 
 ## Licença e Autoria
-Projeto estruturado de uso avaliativo da disciplina de Algoritmos e Estruturas de Dados 2 (AED2). Consulte a pasta `Documentacao/` para acessar a base UML e especificações de Engenharia de Software.
+Projeto estruturado de uso avaliativo da disciplina de Algoritmos e Estruturas de Dados 2 (AED2). Consulte a pasta `docs/` para acessar a base UML e especificações de Engenharia de Software.

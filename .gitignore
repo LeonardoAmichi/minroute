@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# PyInstaller
+build/Setup/
+build/MinRoute/
+dist/
+*.spec
+
+# JRE portátil (muito pesado para o git)
+jre/
+
+# Dados temporários
+data/
+
+# IDE
+.vscode/
+.idea/
+
+# Ambiente
+.env

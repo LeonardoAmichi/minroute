@@ -136,25 +136,26 @@ def draw_map(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], ed
                     cx = x1 + dx / 2
                     cy = y1 + dy / 2
                     angle = math.atan2(dy, dx)
-                    
-                    # Tamanho da seta é 15% do tamanho da rua, para não ficar gigante em mapas de escala pequena
-                    size = dist * 0.15
-                    
-                    setas_oneway.append((cx, cy, angle, size))
+                    setas_oneway.append((cx, cy, angle, dist))
 
     scene.addPath(path_ruas, pen_rua)
     
-    # Desenhar setas discretas de mão única
+    # Desenhar setas adaptativas de mão única
+    # Tamanho uniforme baseado na mediana das ruas → adapta ao zoom naturalmente
     if setas_oneway:
+        dists = sorted([s[3] for s in setas_oneway])
+        mediana = dists[len(dists) // 2]
+        sz = mediana * 0.2  # 20% da rua mediana — uniforme para todas
+
         path_setas = QPainterPath()
-        for cx, cy, angle, size in setas_oneway:
-            path_setas.moveTo(cx + size * math.cos(angle), cy + size * math.sin(angle))
-            path_setas.lineTo(cx + size * math.cos(angle + 2.5), cy + size * math.sin(angle + 2.5))
-            path_setas.lineTo(cx + size * math.cos(angle - 2.5), cy + size * math.sin(angle - 2.5))
+        for cx, cy, angle, _ in setas_oneway:
+            path_setas.moveTo(cx + sz * math.cos(angle), cy + sz * math.sin(angle))
+            path_setas.lineTo(cx + sz * math.cos(angle + 2.5), cy + sz * math.sin(angle + 2.5))
+            path_setas.lineTo(cx + sz * math.cos(angle - 2.5), cy + sz * math.sin(angle - 2.5))
             path_setas.closeSubpath()
         
         item_setas = scene.addPath(path_setas, QPen(Qt.PenStyle.NoPen))
-        item_setas.setBrush(QBrush(QColor(120, 130, 150, 160)))  # Cinza-azulado discreto com transparência
+        item_setas.setBrush(QBrush(QColor(120, 130, 150, 160)))
 
 
 def draw_labels(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], edges: list):
@@ -245,8 +246,29 @@ def draw_route(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], 
         line = scene.addLine(x1, y1, x2, y2, pen)
         track_items.append(line)
 
-        # Desenhar seta de direção a cada N segmentos
+    # Pré-calcular tamanho uniforme das setas baseado na mediana dos segmentos
+    seg_dists = []
+    for i in range(total_segments):
+        x1, y1 = vertices[caminho[i]]
+        x2, y2 = vertices[caminho[i + 1]]
+        seg_dists.append(math.hypot(x2 - x1, y2 - y1))
+    seg_dists.sort()
+    mediana = seg_dists[len(seg_dists) // 2] if seg_dists else 1
+    sz = mediana * 0.3  # 30% da rua mediana da rota
+
+    for i in range(total_segments):
         if i % intervalo_setas == 0:
+            if total_segments == 1:
+                t = 0.5
+            else:
+                t = i / (total_segments - 1)
+            r = int(255 * (1 - t) + 80 * t)
+            g = int(76 * (1 - t) + 250 * t)
+            b = int(76 * (1 - t) + 123 * t)
+            color = QColor(r, g, b)
+
+            x1, y1 = vertices[caminho[i]]
+            x2, y2 = vertices[caminho[i + 1]]
             dx = x2 - x1
             dy = y2 - y1
             dist = math.hypot(dx, dy)
@@ -255,36 +277,12 @@ def draw_route(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], 
                 cy = y1 + dy * 0.55
                 angle = math.atan2(dy, dx)
 
-                arrow_size = 6.0
-                # Triângulo apontando na direção do caminho
-                p1x = cx + arrow_size * math.cos(angle)
-                p1y = cy + arrow_size * math.sin(angle)
-                p2x = cx + arrow_size * math.cos(angle + 2.5)
-                p2y = cy + arrow_size * math.sin(angle + 2.5)
-                p3x = cx + arrow_size * math.cos(angle - 2.5)
-                p3y = cy + arrow_size * math.sin(angle - 2.5)
-
                 arrow_path = QPainterPath()
-                arrow_path.moveTo(p1x, p1y)
-                arrow_path.lineTo(p2x, p2y)
-                arrow_path.lineTo(p3x, p3y)
+                arrow_path.moveTo(cx + sz * math.cos(angle), cy + sz * math.sin(angle))
+                arrow_path.lineTo(cx + sz * math.cos(angle + 2.5), cy + sz * math.sin(angle + 2.5))
+                arrow_path.lineTo(cx + sz * math.cos(angle - 2.5), cy + sz * math.sin(angle - 2.5))
                 arrow_path.closeSubpath()
 
                 arrow_item = scene.addPath(arrow_path, QPen(Qt.PenStyle.NoPen))
                 arrow_item.setBrush(QBrush(color))
-                arrow_item.setFlag(arrow_item.GraphicsItemFlag.ItemIgnoresTransformations)
-                arrow_item.setPos(cx, cy)
-                # Corrigir posição: como ItemIgnoresTransformations usa pos como âncora,
-                # precisamos que o path seja relativo à origem
-                arrow_path_rel = QPainterPath()
-                arrow_path_rel.moveTo(arrow_size * math.cos(angle), arrow_size * math.sin(angle))
-                arrow_path_rel.lineTo(arrow_size * math.cos(angle + 2.5), arrow_size * math.sin(angle + 2.5))
-                arrow_path_rel.lineTo(arrow_size * math.cos(angle - 2.5), arrow_size * math.sin(angle - 2.5))
-                arrow_path_rel.closeSubpath()
-
-                scene.removeItem(arrow_item)
-                arrow_item = scene.addPath(arrow_path_rel, QPen(Qt.PenStyle.NoPen))
-                arrow_item.setBrush(QBrush(color))
-                arrow_item.setFlag(arrow_item.GraphicsItemFlag.ItemIgnoresTransformations)
-                arrow_item.setPos(cx, cy)
                 track_items.append(arrow_item)
