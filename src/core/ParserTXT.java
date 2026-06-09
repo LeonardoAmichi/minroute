@@ -58,8 +58,8 @@ public class ParserTXT {
                 String[] partes = linha.split("\\s+");
                 if (partes.length >= 3) {
                     int id = Integer.parseInt(partes[0]);
-                    double x = Double.parseDouble(partes[1]);
-                    double y = Double.parseDouble(partes[2]);
+                    double x = Double.parseDouble(partes[1].replace(",", "."));
+                    double y = Double.parseDouble(partes[2].replace(",", "."));
                     
                     // Adiciona o ponto no mapa
                     grafo.adicionarVertice(id, x, y);

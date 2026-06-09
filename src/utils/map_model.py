@@ -120,28 +120,55 @@ def load_osm(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
     # Nossa pequena Terra em metros
     RAIO_TERRA = 6378137.0
     
-    # O Python consegue ler o XML inteirinho de uma vez
-    tree = ET.parse(path)
-    root = tree.getroot()
+    # O Python consegue ler o XML de forma iterativa para não estourar a memória RAM
+    context = ET.iterparse(path, events=('end',))
     
     vertices_temp = {}
+    vias_temp = []
     
-    # 1. Procurar todos os pontinhos pelo mapa (nós)
-    for node in root.findall('node'):
-        id_str = node.get('id')
-        lat_str = node.get('lat')
-        lon_str = node.get('lon')
-        if id_str and lat_str and lon_str:
-            id_no = int(id_str)
-            lat = float(lat_str)
-            lon = float(lon_str)
+    # 1. Lê sequencialmente o arquivo, liberando a memória do que já foi processado
+    for event, elem in context:
+        if elem.tag == 'node':
+            id_str = elem.get('id')
+            lat_str = elem.get('lat')
+            lon_str = elem.get('lon')
+            if id_str and lat_str and lon_str:
+                id_no = int(id_str)
+                lat = float(lat_str)
+                lon = float(lon_str)
+                
+                # Aqui rola uma matemática mágica para "achatar" a terra (Mercator)
+                x = RAIO_TERRA * math.radians(lon)
+                y = RAIO_TERRA * math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
+                
+                vertices_temp[id_no] = (x, y)
+            elem.clear() # Limpa o nó XML da memória
             
-            # Aqui rola uma matemática mágica para "achatar" a terra (Mercator)
-            x = RAIO_TERRA * math.radians(lon)
-            y = RAIO_TERRA * math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
+        elif elem.tag == 'way':
+            nds = elem.findall('nd')
+            via = []
+            for nd in nds:
+                ref_str = nd.get('ref')
+                if ref_str:
+                    ref = int(ref_str)
+                    if ref in vertices_temp:
+                        via.append(ref)
+                        
+            # Descobre se a rua é contramão, mão dupla, etc
+            oneway_val = 0
+            for tag in elem.findall('tag'):
+                if tag.get('k') == 'oneway':
+                    v = tag.get('v')
+                    if v in ('yes', 'true', '1'):
+                        oneway_val = 1
+                    elif v in ('-1', 'reverse'):
+                        oneway_val = -1
             
-            vertices_temp[id_no] = (x, y)
-            
+            if len(via) > 1:
+                vias_temp.append((via, oneway_val))
+                
+            elem.clear() # Limpa a via XML da memória
+
     # O OSM usa IDs monstruosos de tamanho. Vamos transformá-los em números de 0, 1, 2...
     mapa_ids = {}
     novo_id = 0
@@ -150,28 +177,8 @@ def load_osm(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
         vertices[novo_id] = point
         novo_id += 1
         
-    # 2. Procurar pelas ruas (vias) que ligam esses pontos
-    for way in root.findall('way'):
-        nds = way.findall('nd')
-        via = []
-        for nd in nds:
-            ref_str = nd.get('ref')
-            if ref_str:
-                ref = int(ref_str)
-                if ref in vertices_temp:
-                    via.append(ref)
-                    
-        # Descobre se a rua é contramão, mão dupla, etc
-        oneway_val = 0
-        for tag in way.findall('tag'):
-            if tag.get('k') == 'oneway':
-                v = tag.get('v')
-                if v in ('yes', 'true', '1'):
-                    oneway_val = 1
-                elif v in ('-1', 'reverse'):
-                    oneway_val = -1
-                    
-        # Liga os pontinhos de dois em dois seguindo as regras de trânsito
+    # 2. Liga os pontinhos de dois em dois seguindo as regras de trânsito
+    for via, oneway_val in vias_temp:
         for i in range(len(via) - 1):
             from_orig = via[i]
             to_orig = via[i+1]

@@ -129,6 +129,16 @@ class MinRouteApp(QMainWindow):
         atalho_tracar = QShortcut(QKeySequence("Ctrl+C"), self)
         atalho_tracar.activated.connect(self.tracar_caminho)
 
+        # Atalhos de Zoom (Ctrl+ e Ctrl-)
+        atalho_zoom_in = QShortcut(QKeySequence("Ctrl++"), self)
+        atalho_zoom_in.activated.connect(lambda: self.view.scale(1.15, 1.15))
+        
+        atalho_zoom_in_alt = QShortcut(QKeySequence("Ctrl+="), self)
+        atalho_zoom_in_alt.activated.connect(lambda: self.view.scale(1.15, 1.15))
+
+        atalho_zoom_out = QShortcut(QKeySequence("Ctrl+-"), self)
+        atalho_zoom_out.activated.connect(lambda: self.view.scale(1 / 1.15, 1 / 1.15))
+
     def configurar_layout(self):
         """
         Monta a carinha do programa. Cria a barra lateral elegante e posiciona
@@ -595,28 +605,6 @@ class MinRouteApp(QMainWindow):
             dados = run_dijkstra(java_cp, Path(self.caminho_mapa_editado), self.origem, self.destino)
 
             caminho = dados.get("caminho", [])
-            if caminho:
-                # Validação extra no Python para evitar ghost routes na contramão
-                rota_valida = True
-                for i in range(len(caminho) - 1):
-                    u = caminho[i]
-                    v = caminho[i+1]
-                    aresta_encontrada = False
-                    for edge in self.todas_arestas:
-                        eu, ev = edge[0], edge[1]
-                        bidir = True
-                        if len(edge) >= 3:
-                            bidir = edge[2]
-                        if (eu == u and ev == v) or (bidir and eu == v and ev == u):
-                            aresta_encontrada = True
-                            break
-                    if not aresta_encontrada:
-                        rota_valida = False
-                        break
-                
-                if not rota_valida:
-                    caminho = []
-                    dados["caminho"] = []
 
             if caminho:
                 draw_route(self.scene, self.vertices, caminho, self.itens_rota)
