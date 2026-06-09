@@ -168,11 +168,11 @@ def draw_map(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], ed
 
     scene.addPath(path_ruas, pen_rua)
     
-    # Desenhar setas adaptativas de mão única
+    # Desenhar setas adaptativas de mão única (Proporcionais ao mapa para sumirem no zoom out)
     if setas_oneway:
         dists = sorted([s[3] for s in setas_oneway])
-        mediana = dists[len(dists) // 2]
-        sz_base = mediana * 0.22  # O tamanho ideal da seta
+        mediana = dists[len(dists) // 2] if dists else 1
+        sz_base = mediana * 0.28  # O tamanho ideal da seta (Aumentado de 0.22 para 0.28)
 
         path_setas = QPainterPath()
         for cx, cy, angle, dist in setas_oneway:
@@ -286,17 +286,18 @@ def draw_route(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], 
         line = scene.addLine(x1, y1, x2, y2, pen)
         track_items.append(line)
 
-    # Pré-calcular tamanho uniforme das setinhas
-    seg_dists = []
-    for i in range(total_segments):
-        x1, y1 = vertices[caminho[i]]
-        x2, y2 = vertices[caminho[i + 1]]
-        seg_dists.append(math.hypot(x2 - x1, y2 - y1))
-    seg_dists.sort()
-    mediana = seg_dists[len(seg_dists) // 2] if seg_dists else 1
-    sz_base = mediana * 0.32
-
     # Coloca umas setinhas elegantes espalhadas pela rota para o usuário saber pra onde ir
+    # Agora as setinhas usam tamanho constante em PIXELS na tela (Cosméticas) 
+    # para não ficarem gigantes no zoom in, nem minúsculas no zoom out.
+    from PyQt6.QtWidgets import QGraphicsPathItem
+
+    sz = 11.0  # Tamanho fixo em pixels para a seta (Aumentado de 7.0 para 11.0)
+    base_arrow = QPainterPath()
+    base_arrow.moveTo(sz, 0)
+    base_arrow.lineTo(-sz, sz * 0.6)
+    base_arrow.lineTo(-sz, -sz * 0.6)
+    base_arrow.closeSubpath()
+
     for i in range(total_segments):
         if i % intervalo_setas == 0:
             if total_segments == 1:
@@ -315,18 +316,18 @@ def draw_route(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], 
             dy = y2 - y1
             dist = math.hypot(dx, dy)
             if dist > 0:
-                # O SEGREDO: a seta da rota usa o tamanho base, mas nunca ultrapassa 45% do trecho atual!
-                sz = min(sz_base, dist * 0.45)
                 cx = x1 + dx * 0.55
                 cy = y1 + dy * 0.55
                 angle = math.atan2(dy, dx)
 
-                arrow_path = QPainterPath()
-                arrow_path.moveTo(cx + sz * math.cos(angle), cy + sz * math.sin(angle))
-                arrow_path.lineTo(cx + sz * math.cos(angle + 2.5), cy + sz * math.sin(angle + 2.5))
-                arrow_path.lineTo(cx + sz * math.cos(angle - 2.5), cy + sz * math.sin(angle - 2.5))
-                arrow_path.closeSubpath()
-
-                arrow_item = scene.addPath(arrow_path, QPen(Qt.PenStyle.NoPen))
+                arrow_item = scene.addPath(base_arrow, QPen(Qt.PenStyle.NoPen))
                 arrow_item.setBrush(QBrush(color))
+                
+                # Posiciona no meio da aresta e gira para apontar no sentido do movimento
+                arrow_item.setPos(cx, cy)
+                arrow_item.setRotation(math.degrees(angle))
+                
+                # O Segredo: Ignora as transformações de zoom para manter a seta sempre do mesmo tamanho na tela!
+                arrow_item.setFlag(QGraphicsPathItem.GraphicsItemFlag.ItemIgnoresTransformations)
+                
                 track_items.append(arrow_item)
