@@ -109,3 +109,17 @@ class IconFactory:
             p.drawEllipse(2, 2, s - 4, s - 4)
             p.drawLine(5, s // 2, s - 5, s // 2)
         return IconFactory._make(18, draw, "#bf616a")
+
+    @staticmethod
+    def sentido():
+        """Desenha uma setinha de direção para o botão de exibir sentido das vias."""
+        def draw(p, c, s):
+            pen = QPen(c, 2)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            p.setPen(pen)
+            # Linha horizontal
+            p.drawLine(3, s // 2, s - 5, s // 2)
+            # Ponta da seta
+            p.drawLine(s - 5, s // 2, s - 8, s // 2 - 3)
+            p.drawLine(s - 5, s // 2, s - 8, s // 2 + 3)
+        return IconFactory._make(18, draw, "#e5c07b")

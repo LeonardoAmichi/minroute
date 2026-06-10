@@ -1,7 +1,7 @@
 import math
 from PyQt6.QtWidgets import QGraphicsView, QGraphicsEllipseItem, QGraphicsScene, QGraphicsObject
 from PyQt6.QtGui import QBrush, QFont, QPainter, QPainterPath, QPen, QColor
-from PyQt6.QtCore import Qt, QTimer, QRectF
+from PyQt6.QtCore import Qt, QTimer, QRectF, pyqtSignal
 
 
 class MapGraphicsView(QGraphicsView):
@@ -10,6 +10,8 @@ class MapGraphicsView(QGraphicsView):
     Aqui lidamos com os cliques do mouse, o zoom com a rodinha e a movimentação
     do mapa para os lados.
     """
+    zoom_changed = pyqtSignal(float)
+
     def __init__(self, scene: QGraphicsScene, app_window):
         super().__init__(scene)
         self.app_window = app_window
@@ -30,6 +32,7 @@ class MapGraphicsView(QGraphicsView):
         # Se girar pra cima, aumenta 15%. Pra baixo, diminui.
         zoom_factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
         self.scale(zoom_factor, zoom_factor)
+        self.zoom_changed.emit(self.transform().m11())
 
     def mousePressEvent(self, event):
         """Reage quando apertamos um botão do mouse."""
@@ -132,7 +135,8 @@ class PulsingDot(QGraphicsObject):
 
 
 def draw_map(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], edges: list):
-    """Pega os pontos e arestas matemáticos e os transforma num desenho bonito na tela."""
+    """Pega os pontos e arestas matemáticos e os transforma num desenho bonito na tela.
+    Retorna uma lista de itens gráficos das setas de mão única (para toggle)."""
     pen_rua = QPen(QColor("#4c566a"))
     pen_rua.setWidthF(1.2)
     pen_rua.setCosmetic(True) # A rua não fica gigante se dermos muito zoom
@@ -168,26 +172,42 @@ def draw_map(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], ed
 
     scene.addPath(path_ruas, pen_rua)
     
-    # Desenhar setas adaptativas de mão única (Proporcionais ao mapa para sumirem no zoom out)
+    # Solução Definitiva: Setas Cosméticas (Imunes a Zoom e Escala de Aresta)
+    # Em vez de tentar calcular proporções complexas, definimos um tamanho exato 
+    # em pixels para a tela. A seta NUNCA vai ficar gigante nem minúscula.
+    itens_setas = []
     if setas_oneway:
-        dists = sorted([s[3] for s in setas_oneway])
-        mediana = dists[len(dists) // 2] if dists else 1
-        sz_base = mediana * 0.28  # O tamanho ideal da seta (Aumentado de 0.22 para 0.28)
-
-        path_setas = QPainterPath()
-        for cx, cy, angle, dist in setas_oneway:
-            # ESSA É A SOLUÇÃO: A seta tem um tamanho padrão, mas NUNCA pode ser maior 
-            # que 35% do tamanho da PRÓPRIA rua. Assim ruas curtas ganham setas curtas!
-            sz = min(sz_base, dist * 0.35)
-            
-            # Matemática para desenhar o triângulo (seta)
-            path_setas.moveTo(cx + sz * math.cos(angle), cy + sz * math.sin(angle))
-            path_setas.lineTo(cx + sz * math.cos(angle + 2.5), cy + sz * math.sin(angle + 2.5))
-            path_setas.lineTo(cx + sz * math.cos(angle - 2.5), cy + sz * math.sin(angle - 2.5))
-            path_setas.closeSubpath()
+        from PyQt6.QtWidgets import QGraphicsPathItem
         
-        item_setas = scene.addPath(path_setas, QPen(Qt.PenStyle.NoPen))
-        item_setas.setBrush(QBrush(QColor(120, 130, 150, 160)))
+        sz = 8.0  # Tamanho fixo em pixels na tela (design original ajustado)
+        base_arrow = QPainterPath()
+        base_arrow.moveTo(sz, 0)
+        base_arrow.lineTo(sz * math.cos(2.5), sz * math.sin(2.5))
+        base_arrow.lineTo(sz * math.cos(-2.5), sz * math.sin(-2.5))
+        base_arrow.closeSubpath()
+        
+        brush = QBrush(QColor(120, 130, 150, 160))
+        pen = QPen(Qt.PenStyle.NoPen)
+
+        for cx, cy, angle, dist in setas_oneway:
+            item = QGraphicsPathItem(base_arrow)
+            item.setBrush(brush)
+            item.setPen(pen)
+            
+            # Move para o centro da aresta e rotaciona na direção correta
+            item.setPos(cx, cy)
+            item.setRotation(math.degrees(angle))
+            
+            # O Segredo: Ignora as transformações de zoom. Tamanho constante em pixels!
+            item.setFlag(QGraphicsPathItem.GraphicsItemFlag.ItemIgnoresTransformations)
+            
+            # Guardamos a distância original da aresta para usar no Level of Detail (LOD)
+            item.setData(0, dist)
+            
+            scene.addItem(item)
+            itens_setas.append(item)
+
+    return itens_setas
 
 
 def draw_labels(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], edges: list):
@@ -255,9 +275,12 @@ def draw_route(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], 
     """
     Desenha o famoso 'Caminho Mais Curto' encontrado pelo Dijkstra!
     Cria uma linha grossa e colorida que vai do vermelho da origem para o verde do destino.
+    Retorna a lista de itens de seta da rota (para controle de visibilidade).
     """
+    setas_rota = []
+
     if len(caminho) < 2:
-        return
+        return setas_rota
 
     total_segments = len(caminho) - 1
     # Intervalo entre setas: a cada N ruas vamos desenhar uma setinha na rota
@@ -291,7 +314,7 @@ def draw_route(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], 
     # para não ficarem gigantes no zoom in, nem minúsculas no zoom out.
     from PyQt6.QtWidgets import QGraphicsPathItem
 
-    sz = 11.0  # Tamanho fixo em pixels para a seta (Aumentado de 7.0 para 11.0)
+    sz = 11.0  # Tamanho fixo em pixels para a seta
     base_arrow = QPainterPath()
     base_arrow.moveTo(sz, 0)
     base_arrow.lineTo(-sz, sz * 0.6)
@@ -331,3 +354,6 @@ def draw_route(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], 
                 arrow_item.setFlag(QGraphicsPathItem.GraphicsItemFlag.ItemIgnoresTransformations)
                 
                 track_items.append(arrow_item)
+                setas_rota.append(arrow_item)
+
+    return setas_rota

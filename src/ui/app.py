@@ -8,6 +8,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtGui import QColor, QBrush, QFont, QShortcut, QKeySequence
 from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QTimer
 
+
+
 if getattr(sys, 'frozen', False):
     ROOT_DIR = Path(sys._MEIPASS) / "src"
 else:
@@ -116,6 +118,8 @@ class MinRouteApp(QMainWindow):
         self.destino = None
         self.itens_rota = []
         self.labels = []
+        self.setas = []
+        self.setas_rota = []
         self.modo_edicao_ativo = False
         self.no_edicao_selecionado = None
 
@@ -277,12 +281,24 @@ class MinRouteApp(QMainWindow):
         self.btn_rotulos.toggled.connect(self.alternar_rotulos)
         layout_sidebar.addWidget(self.btn_rotulos)
 
+        self.btn_sentido = QPushButton("Exibir Sentido")
+        self.btn_sentido.setIcon(IconFactory.sentido())
+        self.btn_sentido.setCheckable(True)
+        self.btn_sentido.setStyleSheet("""
+            QPushButton { background-color: #434c5e; color: white; }
+            QPushButton:hover { background-color: #515c72; }
+            QPushButton:checked { background-color: #e5c07b; color: #2b2b2b; font-weight: bold; }
+        """)
+        self.btn_sentido.toggled.connect(self.alternar_sentido)
+        layout_sidebar.addWidget(self.btn_sentido)
+
         self.cb_mao_unica = QCheckBox("Criar Via de Mão Única")
         self.cb_mao_unica.setStyleSheet("""
             QCheckBox { color: #DCE4EE; font-size: 12px; margin-top: 5px; border: none; }
             QCheckBox::indicator { width: 14px; height: 14px; }
         """)
         self.cb_mao_unica.hide()
+        self.cb_mao_unica.toggled.connect(self.ao_alternar_mao_unica)
         layout_sidebar.addWidget(self.cb_mao_unica)
 
         # ── SEÇÃO: Exportação ──
@@ -344,6 +360,7 @@ class MinRouteApp(QMainWindow):
 
         self.scene = QGraphicsScene()
         self.view = MapGraphicsView(self.scene, self)
+        self.view.zoom_changed.connect(self.atualizar_tamanho_setas)
         layout_principal.addWidget(self.view)
 
     def _criar_separador(self):
@@ -435,12 +452,22 @@ class MinRouteApp(QMainWindow):
         self.scene.clear()
         self.itens_rota.clear()
         self.labels.clear()
+        self.setas.clear()
         
         # Recuperamos o estado
         self.origem = origem_temp
         self.destino = destino_temp
         
-        draw_map(self.scene, self.vertices, self.todas_arestas)
+        self.setas = draw_map(self.scene, self.vertices, self.todas_arestas)
+        
+        # Como draw_map agora retorna as setas visíveis por padrão, 
+        # nós as escondemos aqui caso o botão esteja desligado
+        if not self.btn_sentido.isChecked():
+            for seta in self.setas:
+                seta.hide()
+                
+        # Aplica o Level of Detail dinâmico baseado no zoom atual
+        self.atualizar_tamanho_setas(self.view.transform().m11())
         
         # Otimização de Desempenho: Só cria as milhares de bolinhas azuis/tooltips se a opção estiver ligada
         if self.btn_rotulos.isChecked():
@@ -483,6 +510,39 @@ class MinRouteApp(QMainWindow):
         else:
             for lbl in self.labels:
                 lbl.hide()
+
+    def alternar_sentido(self, ativo):
+        """Liga ou desliga a exibição das setas de sentido (mapa + rota)."""
+        if ativo:
+            for seta in self.setas:
+                seta.show()
+            for seta in self.setas_rota:
+                seta.show()
+        else:
+            for seta in self.setas:
+                seta.hide()
+            for seta in self.setas_rota:
+                seta.hide()
+
+    def atualizar_tamanho_setas(self, view_scale: float):
+        """
+        Level of Detail (LOD) dinâmico para as setas cosméticas:
+        Ao afastar o zoom (zoom out), as arestas ficam minúsculas na tela.
+        Se a seta continuasse com 8 pixels fixos, o mapa viraria um borrão (clutter).
+        Aqui nós encolhemos as setas para que nunca excedam proporção da aresta visível.
+        """
+        for seta in self.setas:
+            dist = seta.data(0)
+            if dist:
+                # view_scale * dist = tamanho da aresta em pixels na tela
+                # 0.025 é o fator mágico (equivale a limitar a seta a ~35% da aresta)
+                escala = min(1.0, dist * view_scale * 0.025)
+                # O limite inferior de 0.15 evita que a matriz de transformação do Qt zere
+                seta.setScale(max(0.15, escala))
+
+    def ao_alternar_mao_unica(self, checked):
+        if checked and not self.btn_sentido.isChecked():
+            self.btn_sentido.setChecked(True)
 
     def alternar_modo_edicao(self, ativo):
         self.modo_edicao_ativo = ativo
@@ -607,7 +667,11 @@ class MinRouteApp(QMainWindow):
             caminho = dados.get("caminho", [])
 
             if caminho:
-                draw_route(self.scene, self.vertices, caminho, self.itens_rota)
+                self.setas_rota = draw_route(self.scene, self.vertices, caminho, self.itens_rota)
+                # Se o botão de sentido estiver desligado, esconde as setas da rota
+                if not self.btn_sentido.isChecked():
+                    for seta in self.setas_rota:
+                        seta.hide()
                 self.lbl_tempo.setText(f"Tempo: {dados['tempo_ms']} ms")
                 self.lbl_nos.setText(f"Nós explorados: {dados['nos_explorados']}")
                 self.lbl_custo.setText(f"Distância: {dados['distancia_total']:.2f} u.m.")
@@ -642,6 +706,7 @@ class MinRouteApp(QMainWindow):
                 item.stop_pulse()
             self.scene.removeItem(item)
         self.itens_rota.clear()
+        self.setas_rota.clear()
         self.origem = self.destino = None
         self.lbl_origem.setText("Origem: --")
         self.lbl_destino.setText("Destino: --")
