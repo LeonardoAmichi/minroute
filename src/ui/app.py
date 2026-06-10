@@ -352,6 +352,10 @@ class MinRouteApp(QMainWindow):
         self.lbl_custo = QLabel("Distância: -- u.m.")
         layout_stats.addWidget(self.lbl_custo)
 
+        self.lbl_caminho = QLabel("Trajeto: --")
+        self.lbl_caminho.setWordWrap(True)
+        layout_stats.addWidget(self.lbl_caminho)
+
         layout_sidebar.addWidget(frame_stats)
 
         layout_principal.addWidget(sidebar)
@@ -411,6 +415,8 @@ class MinRouteApp(QMainWindow):
         self.btn_remover.hide()
         self.lbl_vertices_count.setText("Vértices: --")
         self.lbl_arestas_count.setText("Arestas: --")
+        self.lbl_caminho.setText("Trajeto: --")
+        self.lbl_caminho.setToolTip("")
         self.btn_edicao.setChecked(False)
         self.mostrar_estado_vazio()
         self.notification.show_message("Mapa removido.", sucesso=True)
@@ -672,6 +678,15 @@ class MinRouteApp(QMainWindow):
                 self.lbl_tempo.setText(f"Tempo: {dados['tempo_ms']} ms")
                 self.lbl_nos.setText(f"Nós explorados: {dados['nos_explorados']}")
                 self.lbl_custo.setText(f"Distância: {dados['distancia_total']:.2f} u.m.")
+                
+                caminho_str = " ➔ ".join(str(v) for v in caminho)
+                self.lbl_caminho.setToolTip(caminho_str)
+                if len(caminho) > 8:
+                    caminho_display = " ➔ ".join(str(v) for v in caminho[:4]) + " ➔ ... ➔ " + " ➔ ".join(str(v) for v in caminho[-4:])
+                else:
+                    caminho_display = caminho_str
+                self.lbl_caminho.setText(f"Trajeto: {caminho_display}")
+
                 self.update_status("Rota encontrada com sucesso.")
             else:
                 # Tenta calcular rota no sentido inverso para verificar bloqueios por mão única
@@ -710,6 +725,8 @@ class MinRouteApp(QMainWindow):
         self.lbl_tempo.setText("Tempo: -- ms")
         self.lbl_nos.setText("Nós explorados: --")
         self.lbl_custo.setText("Distância: -- u.m.")
+        self.lbl_caminho.setText("Trajeto: --")
+        self.lbl_caminho.setToolTip("")
 
     def copiar_imagem(self):
         QApplication.clipboard().setPixmap(self.view.grab())
