@@ -5,28 +5,26 @@ import os
 from pathlib import Path
 
 """
-Este arquivo serve como uma "ponte" de comunicação entre o nosso programa (em Python) 
-e a inteligência de cálculo de rotas (escrita em Java). 
-Como o Java é mais rápido para as matemáticas complexas do algoritmo, 
-mandamos o mapa para ele e pegamos o resultado de volta!
+Ponte entre a aplicação Python e o motor de cálculo escrito em Java.
+Encapsula a invocação do processo Java e a conversão do JSON retornado.
 """
 
 def run_dijkstra(java_cp: Path, snapshot_path: Path, origem: int, destino: int) -> dict:
     """
     Chama o programa Java, passa o mapa atualizado e pede a melhor rota entre dois pontos.
     """
-    # Descobre onde está instalado o Java (JRE) dentro da nossa pasta, para funcionar em qualquer PC
+    # Detecta um executável Java empacotado ou usa o 'java' do sistema
     if getattr(sys, 'frozen', False):
         java_exe = Path(sys._MEIPASS) / "jre" / "bin" / "java.exe"
     else:
         local_jre = Path(__file__).resolve().parents[2] / "jre" / "bin" / "java.exe"
         java_exe = local_jre if local_jre.exists() else "java"
 
-    # Monta a frase (comando) que vamos mandar para o terminal
+    # Monta o comando para executar a classe Java responsável pelo Dijkstra
     comando = [
         str(java_exe),
-        "-client",               # Inicia o Java de forma mais rápida
-        "-cp",                   # Diz onde estão os códigos Java compilados
+        "-client",               # Flag para iniciar JVM em modo cliente (quando aplicável)
+        "-cp",                   # Classpath: diretório com classes compiladas
         str(java_cp),
         "src.core.DijkstraCore", # Nome da classe Java principal
         str(snapshot_path),      # Caminho do mapa atual (que o Java vai ler)
@@ -34,18 +32,18 @@ def run_dijkstra(java_cp: Path, snapshot_path: Path, origem: int, destino: int) 
         str(destino),            # Ponto de chegada
     ]
 
-    # No Windows, usamos esse truque para esconder a tela preta do terminal
+    # Em Windows, evita exibir janela de console ao executar o processo
     kwargs = {}
     if os.name == 'nt':
         kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
 
     try:
-        # Executa o comando de fato e aguarda a resposta (capture_output=True)
+        # Executa o processo e captura a saída padrão (espera JSON do Java)
         resultado = subprocess.run(comando, capture_output=True, text=True, check=True, **kwargs)
-        # O Java nos responde em formato JSON, então traduzimos isso para um dicionário Python
+        # Converte JSON retornado pelo Java em dicionário Python
         return json.loads(resultado.stdout)
     except subprocess.CalledProcessError as e:
-        # Tenta interpretar a mensagem de erro formatada como JSON para exibir algo amigável
+        # Tenta interpretar stderr como JSON para extrair mensagem de erro amigável
         if e.stderr:
             try:
                 erro_json = json.loads(e.stderr)
@@ -54,6 +52,6 @@ def run_dijkstra(java_cp: Path, snapshot_path: Path, origem: int, destino: int) 
             except json.JSONDecodeError:
                 pass
         
-        # Se falhou ou não era JSON, mostramos a mensagem que tiver
+        # Caso contrário, propaga mensagem de erro genérica
         mensagem = e.stderr.strip() if e.stderr else str(e)
         raise RuntimeError(mensagem)

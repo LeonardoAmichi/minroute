@@ -3,7 +3,7 @@ from typing import Dict, List, Tuple
 import xml.etree.ElementTree as ET
 import math
 
-# Criando apelidos (aliases) para facilitar a leitura do código
+# Tipos auxiliares para clareza de código
 VertexId = int
 Point = Tuple[float, float]
 Edge = Tuple[int, int, bool]
@@ -11,14 +11,14 @@ Edge = Tuple[int, int, bool]
 
 def load_txt(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
     """
-    Lê um arquivo de mapa no formato texto simples (.txt).
-    Ele pula comentários, entende o cabeçalho e constrói a lista de pontos e ruas.
+    Carrega um grafo a partir de um arquivo TXT simples.
+    Ignora comentários (linhas iniciadas por '#') e interpreta cabeçalho e seções.
     """
     vertices: Dict[VertexId, Point] = {}
     edges: List[Edge] = []
 
     with path.open("r", encoding="utf-8") as f:
-        # Lê todas as linhas, tirando espaços e ignorando comentários
+        # Lê linhas não vazias, removendo espaços e filtrando comentários
         linhas = [l.strip() for l in f.readlines() if l.strip() and not l.strip().startswith("#")]
         if not linhas:
             return {}, []
@@ -37,13 +37,13 @@ def load_txt(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
             partes = linhas[idx].split()
             if len(partes) >= 3:
                 id_no = int(partes[0])
-                # Trocamos vírgula por ponto para o Python não se confundir
+                    # Normaliza o separador decimal (vírgula -> ponto)
                 x = float(partes[1].replace(",", "."))
                 y = float(partes[2].replace(",", "."))
                 vertices[id_no] = (x, y)
             idx += 1
             
-        # Lendo as ruas (arestas) que conectam os pontos
+        # Lê as definições de arestas que conectam vértices
         for _ in range(m):
             if idx >= len(linhas): break
             partes = linhas[idx].split()
@@ -51,7 +51,7 @@ def load_txt(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
                 u = int(partes[0])
                 v = int(partes[1])
                 is_bidirectional = True
-                # A terceira coluna, se existir, avisa se é mão única ou dupla
+                # A terceira coluna, se presente, indica direção (0 = bidirecional)
                 if len(partes) >= 3:
                     is_bidirectional = (int(partes[2]) == 0)
                 edges.append((u, v, is_bidirectional))
@@ -62,8 +62,7 @@ def load_txt(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
 
 def load_poly(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
     """
-    Lê arquivos do tipo .poly, que têm uma estrutura parecida com o .txt,
-    mas o cabeçalho é dividido em várias linhas.
+    Lê arquivos .poly e converte em estruturas de vértices e arestas.
     """
     vertices: Dict[VertexId, Point] = {}
     edges: List[Edge] = []
@@ -77,7 +76,7 @@ def load_poly(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
         total_vertices = int(linhas[idx].split()[0])
         idx += 1
         
-        # Pega as coordenadas X e Y
+        # Lê coordenadas X e Y de cada vértice
         for _ in range(total_vertices):
             if idx >= len(linhas): break
             partes = linhas[idx].split()
@@ -92,7 +91,7 @@ def load_poly(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
         total_arestas = int(linhas[idx].split()[0])
         idx += 1
         
-        # Pega de onde a rua sai e pra onde ela vai
+        # Lê definições das arestas (origem, destino e direção)
         for _ in range(total_arestas):
             if idx >= len(linhas): break
             partes = linhas[idx].split()
@@ -100,7 +99,7 @@ def load_poly(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
                 u = int(partes[1])
                 v = int(partes[2])
                 is_bidirectional = True
-                # Verifica a regra de mão da rua
+                # Interpreta a flag de direção, quando presente
                 if len(partes) >= 4:
                     is_bidirectional = (int(partes[3]) == 0)
                 edges.append((u, v, is_bidirectional))
@@ -111,16 +110,16 @@ def load_poly(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
 
 def load_osm(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
     """
-    Desvenda os segredos de um arquivo XML do OpenStreetMap.
-    Ele converte coordenadas da Terra para coordenadas de tela plana.
+    Parser para arquivos OSM: converte nós e ways em vértices e arestas,
+    aplicando projeção Mercator simplificada para coordenadas planas.
     """
     vertices: Dict[VertexId, Point] = {}
     edges: List[Edge] = []
     
-    # Nossa pequena Terra em metros
+    # Raio da Terra (metros) utilizado na projeção
     RAIO_TERRA = 6378137.0
-    
-    # O Python consegue ler o XML de forma iterativa para não estourar a memória RAM
+
+    # Parsing iterativo do XML para reduzir uso de memória
     context = ET.iterparse(path, events=('end',))
     
     vertices_temp = {}
@@ -137,12 +136,13 @@ def load_osm(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
                 lat = float(lat_str)
                 lon = float(lon_str)
                 
-                # Aqui rola uma matemática mágica para "achatar" a terra (Mercator)
+                # Converte latitude/longitude para projeção plana (Mercator)
                 x = RAIO_TERRA * math.radians(lon)
                 y = RAIO_TERRA * math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
                 
                 vertices_temp[id_no] = (x, y)
-            elem.clear() # Limpa o nó XML da memória
+            # Libera elementos processados para manter uso de memória baixo
+            elem.clear()
             
         elif elem.tag == 'way':
             nds = elem.findall('nd')
@@ -154,7 +154,7 @@ def load_osm(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
                     if ref in vertices_temp:
                         via.append(ref)
                         
-            # Descobre se a rua é contramão, mão dupla, etc
+            # Determina o valor 'oneway' a partir das tags da via
             oneway_val = 0
             for tag in elem.findall('tag'):
                 if tag.get('k') == 'oneway':
@@ -166,10 +166,10 @@ def load_osm(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
             
             if len(via) > 1:
                 vias_temp.append((via, oneway_val))
-                
-            elem.clear() # Limpa a via XML da memória
+            # Libera elemento da via
+            elem.clear()
 
-    # O OSM usa IDs monstruosos de tamanho. Vamos transformá-los em números de 0, 1, 2...
+    # Normaliza IDs OSM para um índice inteiro sequencial (0..N-1)
     mapa_ids = {}
     novo_id = 0
     for old_id, point in vertices_temp.items():
@@ -177,7 +177,7 @@ def load_osm(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
         vertices[novo_id] = point
         novo_id += 1
         
-    # 2. Liga os pontinhos de dois em dois seguindo as regras de trânsito
+    # Conecta nós em arestas seguindo a ordem das vias e regras de direção
     for via, oneway_val in vias_temp:
         for i in range(len(via) - 1):
             from_orig = via[i]
@@ -198,26 +198,26 @@ def load_osm(path: Path) -> Tuple[Dict[VertexId, Point], List[Edge]]:
 
 def save_snapshot(path: Path, vertices: Dict[VertexId, Point], edges: List[Edge]) -> None:
     """
-    Tira uma "foto" (salva o estado) de como o mapa está no momento para que
-    o Java possa ler a versão mais recente caso a gente tenha editado.
+    Serializa o estado atual do grafo para o formato que o motor Java espera.
+    Preenche lacunas de IDs com vértices "fantasmas" para manter índices estáveis.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     max_id = max(vertices.keys()) if vertices else -1
     total_to_write = max_id + 1
     
     with path.open("w", encoding="utf-8") as f:
-        # O Java usa o primeiro valor como tamanho do array e limite do loop de leitura.
-        # Para evitar ArrayIndexOutOfBounds e erros de leitura, preenchemos os buracos (gaps).
+        # Escreve cabeçalho com tamanho esperado pelo leitor Java.
+        # Preenche índices ausentes com entradas neutras para manter compatibilidade.
         f.write(f"{total_to_write}\t2\t0\t1\n")
         for i in range(total_to_write):
             if i in vertices:
                 x, y = vertices[i]
                 f.write(f"{i}\t{str(x).replace('.', ',')}\t{str(y).replace('.', ',')}\t0\n")
             else:
-                # Vértice "fantasma" para manter a integridade dos índices no Java
+                # Entrada neutra para índices ausentes, preservando contiguidades
                 f.write(f"{i}\t0,0\t0,0\t0\n")
 
-        # Escreve as conexões atualizadas
+        # Escreve a lista de arestas e a flag de direção compatível com o parser Java
         f.write(f"{len(edges)}\t1\n")
         for i, edge in enumerate(edges):
             u, v = edge[0], edge[1]
@@ -231,13 +231,14 @@ def save_snapshot(path: Path, vertices: Dict[VertexId, Point], edges: List[Edge]
 
 def find_nearest_vertex(vertices: Dict[VertexId, Point], x: float, y: float) -> Tuple[VertexId | None, float]:
     """
-    Quando o usuário clica na tela, essa função busca qual é o pontinho (vértice) mais perto do mouse.
+    Retorna o vértice mais próximo da posição (x, y) e a distância ao quadrado.
+    Calcula distância ao quadrado por eficiência (evita sqrt).
     """
     nearest = None
-    nearest_dist_sq = float("inf") # Começamos achando que o mais perto está no infinito
+    nearest_dist_sq = float("inf") # Inicializa com infinito
 
     for id_no, (vx, vy) in vertices.items():
-        # Usa Pitágoras (sem tirar a raiz para ficar mais rápido) para ver quem tá mais perto
+        # Calcula distância ao quadrado (Pitágoras sem raiz) por eficiência
         dist_sq = (vx - x) ** 2 + (vy - y) ** 2
         if dist_sq < nearest_dist_sq:
             nearest_dist_sq = dist_sq
@@ -248,9 +249,9 @@ def find_nearest_vertex(vertices: Dict[VertexId, Point], x: float, y: float) -> 
 
 def create_vertex(vertices: Dict[VertexId, Point], x: float, y: float) -> VertexId:
     """
-    Cria um ponto novinho em folha na coordenada X e Y fornecida.
+    Cria um novo vértice com ID incremental e retorna seu identificador.
     """
-    # Acha o último número usado para dar um ID inédito para ele
+    # Gera novo ID incremental baseado no maior ID presente
     novo_id = max(vertices.keys()) + 1 if vertices else 0
     vertices[novo_id] = (x, y)
     return novo_id

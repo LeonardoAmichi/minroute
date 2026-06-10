@@ -8,31 +8,29 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Essa classe funciona como um detetive de mapas do OpenStreetMap (.osm).
- * Ela lê aqueles arquivos cheios de tags do OSM (que parecem HTML/XML) e extrai 
- * apenas os pontos (nós) e as ruas (vias) que precisamos para traçar nossas rotas.
+ * Parser simples para arquivos OpenStreetMap (.osm).
+ * Extrai nós e vias relevantes e converte em um objeto `Grafo`.
  */
 public class ParserOSM {
 
-    // Essa constante representa o tamanho do planeta! Usamos o raio aproximado da Terra (em metros)
-    // para transformar as coordenadas globais em um plano X e Y (tipo um mapa de papel)
+    // Raio aproximado da Terra (em metros) usado na projeção para coordenadas planas
     private static final double RAIO_TERRA = 6378137.0; 
 
     /**
-     * Uma ViaOSM representa uma rua ou trecho de estrada no formato do OpenStreetMap.
+     * Representa uma via do OSM, com sequência de nós e informação de sentido (oneway).
      */
     static class ViaOSM {
-        // A rua é composta por uma sequência de pontos ligados
+        // Sequência de IDs de nós que compõem a via
         List<Long> nos = new ArrayList<>();
-        // Indica o sentido do fluxo: 0 = mão dupla, 1 = vai em frente, -1 = contramão
+        // 0 = bidirecional, 1 = oneway forward, -1 = oneway reverse
         int oneway = 0; 
     }
 
     /**
-     * A função principal que lê o arquivo .osm e nos devolve um Grafo pronto para o uso.
+     * Carrega um grafo a partir de um arquivo OSM, extraindo nós e ways relevantes.
      */
     public static Grafo carregar(String caminhoArquivo) throws Exception {
-        // Como o OSM usa IDs enormes e aleatórios, usamos um mapa temporário para não nos perdermos
+        // Temporários para armazenar nós e vias antes de traduzir para índices inteiros
         Map<Long, Grafo.Vertice> verticesTemp = new HashMap<>();
         List<ViaOSM> vias = new ArrayList<>();
 
@@ -40,52 +38,51 @@ public class ParserOSM {
             String linha;
             ViaOSM viaAtual = null;
 
-            // Lemos o arquivo inteiro, linha por linha
+            // Itera sobre as linhas do arquivo OSM
             while ((linha = br.readLine()) != null) {
-                // 1. Encontramos um Ponto (Node no OSM)
+                // 1) Detecta definição de nó (<node>) e extrai id/lat/lon
                 if (linha.contains("<node")) {
                     long id = extrairAtributoLong(linha, "id=");
                     double lat = extrairAtributoDouble(linha, "lat=");
                     double lon = extrairAtributoDouble(linha, "lon=");
 
-                    // A mágica matemática! Precisamos converter Latitude e Longitude da esfera da Terra
-                    // para um papel plano (Projeção Mercator Simples), gerando o X e Y do nosso mapa.
+                    // Converte coordenadas geográficas para projeção plana (Mercator simplificado)
                     double x = RAIO_TERRA * Math.toRadians(lon);
                     double y = RAIO_TERRA * Math.log(Math.tan(Math.PI / 4 + Math.toRadians(lat) / 2));
 
-                    // Guardamos o ponto na nossa lista de espera
+                    // Armazena temporariamente o vértice para posterior indexação
                     verticesTemp.put(id, new Grafo.Vertice(id, x, y));
                 }
                 
-                // 2. Encontramos o começo de uma Rua (Way no OSM)
+                // 2) Detecta início de uma via (<way>) e inicia objeto auxiliar
                 if (linha.contains("<way")) {
                     viaAtual = new ViaOSM(); // Começamos a montar uma nova rua
                 }
                 
-                // Procuramos pelas tags dentro da Rua para descobrir suas regras (ex: se é mão única)
+                // Procura tags dentro do way para obter propriedades (ex.: oneway)
                 if (linha.contains("<tag") && viaAtual != null) {
                     if (linha.contains("k=\"oneway\"")) {
                         String v = extrairString(linha, "v=");
                         if (v.equals("yes") || v.equals("true") || v.equals("1")) {
-                            viaAtual.oneway = 1; // Só vai
+                            viaAtual.oneway = 1;
                         } else if (v.equals("-1") || v.equals("reverse")) {
-                            viaAtual.oneway = -1; // Só vem (contramão)
+                            viaAtual.oneway = -1;
                         }
                     }
                 }
                 
-                // 3. Encontramos um ponto de conexão ("nd" de node reference) dentro dessa Rua
+                // 3) Captura referências a nós (<nd ref="...">) dentro do way
                 if (linha.contains("<nd") && viaAtual != null) {
                     long refId = extrairAtributoLong(linha, "ref=");
-                    // Se for um ponto que a gente já guardou antes, adicionamos na rua
+                    // Se o nó já foi registrado, adiciona à sequência da via
                     if (verticesTemp.containsKey(refId)) {
                         viaAtual.nos.add(refId);
                     }
                 }
                 
-                // 4. Chegamos ao final da Rua
+                // 4) Ao fechar o way, valida e armazena a via
                 if (linha.contains("</way>") && viaAtual != null) {
-                    // Só nos interessa ruas que liguem pelo menos 2 pontos (não dá pra fazer rua de 1 ponto só!)
+                    // Considera apenas vias com pelo menos dois nós
                     if (viaAtual.nos.size() > 1) {
                         vias.add(viaAtual);
                     }
@@ -94,7 +91,7 @@ public class ParserOSM {
             }
         }
 
-        // 5. Agora vamos montar o nosso Grafo final organizadinho!
+        // 5) Constrói o grafo final traduzindo IDs OSM para índices inteiros sequenciais
         Grafo grafo = new Grafo(verticesTemp.size());
         
         // Vamos dar IDs simples (0, 1, 2...) em vez dos números gigantes do OSM
@@ -107,7 +104,7 @@ public class ParserOSM {
             novoId++;
         }
 
-        // Por fim, vamos traduzir todas as ruas conectando com os IDs novos
+        // Traduz e adiciona as arestas ao grafo respeitando a direção das vias
         for (ViaOSM via : vias) {
             for (int i = 0; i < via.nos.size() - 1; i++) {
                 long fromOriginal = via.nos.get(i);
@@ -117,7 +114,7 @@ public class ParserOSM {
                 Integer toInterno = mapaIds.get(toOriginal);
                 
                 if (fromInterno != null && toInterno != null) {
-                    // Adicionamos a conexão respeitando a mão da via!
+                    // Adiciona conexão conforme atributo 'oneway'
                     if (via.oneway == 1) {
                         grafo.adicionarArestaDirecionada(fromInterno, toInterno);
                     } else if (via.oneway == -1) {
@@ -133,14 +130,14 @@ public class ParserOSM {
     }
 
     // ---------------------------------------------------------------------------------
-    // Funções auxiliares (Os pequenos ajudantes que pinçam textos do meio das tags XML)
+    // Funções auxiliares para extrair atributos de texto nas linhas XML
     // ---------------------------------------------------------------------------------
 
     private static long extrairAtributoLong(String linha, String atributo) {
         try {
             return Long.parseLong(extrairString(linha, atributo));
         } catch (Exception e) {
-            return -1L; // Retorna um número que indica que falhou em encontrar
+            return -1L; // Indica falha na extração
         }
     }
 
@@ -153,8 +150,8 @@ public class ParserOSM {
     }
 
     /**
-     * Esse método é o cara que vai lá no texto da linha, procura por uma palavrinha chave
-     * (por exemplo "lat="), e rouba tudo o que está escrito entre as aspas logo depois dela.
+     * Extrai o valor de um atributo entre aspas a partir de uma linha XML.
+     * Ex.: extrairString("... lat=\"12.3\" ...", "lat=") -> "12.3"
      */
     private static String extrairString(String linha, String atributo) {
         int index = linha.indexOf(atributo);

@@ -6,68 +6,67 @@ from PyQt6.QtCore import Qt, QTimer, QRectF, pyqtSignal
 
 class MapGraphicsView(QGraphicsView):
     """
-    Nossa tela principal (como se fosse a lente de uma câmera)!
-    Aqui lidamos com os cliques do mouse, o zoom com a rodinha e a movimentação
-    do mapa para os lados.
+    Visualização do mapa: trata interações de mouse (clique, arraste, zoom)
+    e emite sinal quando a escala é alterada.
     """
     zoom_changed = pyqtSignal(float)
 
     def __init__(self, scene: QGraphicsScene, app_window):
         super().__init__(scene)
         self.app_window = app_window
-        # Antialiasing deixa as linhas do mapa mais suaves, sem aquele aspecto "pixelado"
+        # Habilita antialiasing para suavizar traços
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setDragMode(QGraphicsView.DragMode.NoDrag)
-        # O zoom vai focar onde o mouse estiver apontando
+        # Define o ponto de ancoragem do zoom sob o cursor do mouse
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
-        # Fundo do mapa numa cor escura elegante
+        # Define cor de fundo escura para o mapa
         self.setBackgroundBrush(QBrush(QColor("#1e1e1e")))
-        # Esconde aquelas barras de rolagem chatas na lateral e embaixo
+        # Desativa barras de rolagem horizontais e verticais
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._last_pan_pos = None
 
     def wheelEvent(self, event):
-        """Dá zoom no mapa girando a rodinha do mouse."""
-        # Se girar pra cima, aumenta 15%. Pra baixo, diminui.
+        """Aplica zoom relativo ao movimento da roda do mouse."""
+        # Rodada positiva -> zoom in; negativa -> zoom out (fator ~15%)
         zoom_factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
         self.scale(zoom_factor, zoom_factor)
         self.zoom_changed.emit(self.transform().m11())
 
     def mousePressEvent(self, event):
-        """Reage quando apertamos um botão do mouse."""
+        """Processa evento de pressionamento de botão do mouse."""
         if event.button() == Qt.MouseButton.RightButton:
-            # Botão direito: prepara para "agarrar" e arrastar o mapa
+            # Botão direito: inicia arraste (pan) do mapa
             self._last_pan_pos = event.pos()
             self.setCursor(Qt.CursorShape.ClosedHandCursor)
         elif event.button() == Qt.MouseButton.LeftButton:
-            # Botão esquerdo: avisa nossa janela principal onde o usuário clicou
+            # Botão esquerdo: notifica a janela principal sobre a posição do clique
             scene_pos = self.mapToScene(event.pos())
             self.app_window.ao_clicar_mapa(scene_pos.x(), scene_pos.y())
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        """Lida com a movimentação do mouse, arrastando o mapa se o botão direito estiver pressionado."""
+        """Processa movimento do mouse e realiza pan quando o botão direito estiver ativo."""
         if event.buttons() & Qt.MouseButton.RightButton and self._last_pan_pos is not None:
             delta = event.pos() - self._last_pan_pos
             self._last_pan_pos = event.pos()
-            # Desloca a barra de rolagem (invisível) para mover a tela
+            # Desliza a visualização atual para simular arraste do mapa
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
             self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        """Ao soltar o botão direito, volta a setinha do mouse ao normal."""
+        """Restaura estado ao soltar o botão do mouse (ex.: cursor)."""
         if event.button() == Qt.MouseButton.RightButton:
             self._last_pan_pos = None
             self.setCursor(Qt.CursorShape.ArrowCursor)
         super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event):
-        """Ao dar duplo clique no botão esquerdo, avisa o app principal (usado para apagar pontos)."""
+        """Ao duplo clique, encaminha evento ao app principal (ex.: remoção de vértice)."""
         if event.button() == Qt.MouseButton.LeftButton:
             scene_pos = self.mapToScene(event.pos())
-            # Chama novo método no app.py para tratar o duplo clique (deletar)
+            # Invoca handler de duplo clique no app principal, se disponível
             if hasattr(self.app_window, 'ao_duplo_clique_mapa'):
                 self.app_window.ao_duplo_clique_mapa(scene_pos.x(), scene_pos.y())
         super().mouseDoubleClickEvent(event)
@@ -93,7 +92,7 @@ class PulsingDot(QGraphicsObject):
         self._timer.start(40)
 
     def _animate(self):
-        """Faz a cordinha (pulse) aumentar e desaparecer repetidamente."""
+        """Atualiza estado do pulso e solicita redesenho do item animado."""
         if self._expanding:
             self._pulse_radius += 0.4
             self._pulse_opacity -= 0.02
@@ -105,17 +104,17 @@ class PulsingDot(QGraphicsObject):
             if self._pulse_radius <= 14:
                 self._expanding = True
         self._pulse_opacity = max(0.1, min(0.6, self._pulse_opacity))
-        self.update() # Manda desenhar a bolinha de novo com a nova fase do pulso
+        self.update() # Solicita redesenho com novos parâmetros de pulso
 
     def boundingRect(self):
-        """Informa ao sistema o espaço que nossa bolinha precisa (área limite)."""
+        """Retorna a área ocupada pelo item para o sistema de renderização."""
         return QRectF(-22, -22, 44, 44)
 
     def paint(self, painter, option, widget=None):
-        """Desenha a bolinha e a argola em volta (pulso)."""
+        """Renderiza o ponto e seu anel de pulso com antialiasing."""
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Anel de pulso
+        # Anel de pulso (efeito de destaque)
         pulse_color = QColor(self._color)
         pulse_color.setAlphaF(self._pulse_opacity)
         painter.setPen(QPen(pulse_color, 2))
@@ -123,26 +122,27 @@ class PulsingDot(QGraphicsObject):
         r = self._pulse_radius
         painter.drawEllipse(QRectF(-r, -r, r * 2, r * 2))
         
-        # Ponto central
+        # Ponto central (marcador)
         painter.setPen(QPen(Qt.GlobalColor.white, 1.5))
         painter.setBrush(QBrush(self._color))
         r2 = self._radius
         painter.drawEllipse(QRectF(-r2, -r2, r2 * 2, r2 * 2))
 
     def stop_pulse(self):
-        """Para o cronômetro (útil na hora de apagar o ponto da tela para não gastar memória)."""
+        """Para o temporizador para liberar recursos quando o item for removido."""
         self._timer.stop()
 
 
 def draw_map(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], edges: list):
-    """Pega os pontos e arestas matemáticos e os transforma num desenho bonito na tela.
-    Retorna uma lista de itens gráficos das setas de mão única (para toggle)."""
+    """Desenha o grafo (arestas) na cena e retorna itens representando setas de vias one-way.
+    Os itens retornados podem ser usados para alternar visibilidade posteriormente.
+    """
     pen_rua = QPen(QColor("#4c566a"))
     pen_rua.setWidthF(1.2)
-    pen_rua.setCosmetic(True) # A rua não fica gigante se dermos muito zoom
+    pen_rua.setCosmetic(True) # Mantém espessura fixa em pixels independentemente do zoom
 
     path_ruas = QPainterPath()
-    setas_oneway = []  # Lista de (cx, cy, angle, dist) para desenhar setas nas vias de mão única
+    setas_oneway = []  # Lista de (cx, cy, angle, dist) para desenhar setas em vias direcionadas
 
     for edge in edges:
         u = edge[0]
@@ -155,11 +155,11 @@ def draw_map(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], ed
             x1, y1 = vertices[u]
             x2, y2 = vertices[v]
             
-            # Adiciona um traço da rua ao caminho total do mapa
+            # Adiciona segmento da aresta ao caminho composto
             path_ruas.moveTo(x1, y1)
             path_ruas.lineTo(x2, y2)
             
-            # Apenas vias de mão única recebem setinhas dizendo o sentido
+            # Apenas vias direcionadas recebem setas indicativas de sentido
             if not is_bidirectional:
                 dx = x2 - x1
                 dy = y2 - y1
@@ -172,14 +172,12 @@ def draw_map(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], ed
 
     scene.addPath(path_ruas, pen_rua)
     
-    # Solução Definitiva: Setas Cosméticas (Imunes a Zoom e Escala de Aresta)
-    # Em vez de tentar calcular proporções complexas, definimos um tamanho exato 
-    # em pixels para a tela. A seta NUNCA vai ficar gigante nem minúscula.
+    # Setas cosméticas independentes do zoom: tamanho fixo em pixels para consistência visual
     itens_setas = []
     if setas_oneway:
         from PyQt6.QtWidgets import QGraphicsPathItem
         
-        sz = 8.0  # Tamanho fixo em pixels na tela (design original ajustado)
+        sz = 8.0  # Tamanho fixo em pixels na tela
         base_arrow = QPainterPath()
         base_arrow.moveTo(sz, 0)
         base_arrow.lineTo(sz * math.cos(2.5), sz * math.sin(2.5))
@@ -194,14 +192,14 @@ def draw_map(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], ed
             item.setBrush(brush)
             item.setPen(pen)
             
-            # Move para o centro da aresta e rotaciona na direção correta
+            # Posiciona e rotaciona o item para coincidir com a aresta
             item.setPos(cx, cy)
             item.setRotation(math.degrees(angle))
             
-            # O Segredo: Ignora as transformações de zoom. Tamanho constante em pixels!
+            # Ignora transformações de zoom para manter tamanho constante em pixels
             item.setFlag(QGraphicsPathItem.GraphicsItemFlag.ItemIgnoresTransformations)
             
-            # Guardamos a distância original da aresta para usar no Level of Detail (LOD)
+            # Armazena a distância da aresta para uso em LOD (Level of Detail)
             item.setData(0, dist)
             
             scene.addItem(item)
@@ -211,13 +209,11 @@ def draw_map(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], ed
 
 
 def draw_labels(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], edges: list):
-    """
-    Cria pequenos "botões invisíveis" sobre os cruzamentos.
-    Quando a gente passar o mouse por cima, eles vão exibir informações úteis.
+    """Cria pontos interativos sobre vértices que exibem tooltip com informações.
     """
     labels = []
 
-    # Pré-calcular conexões e distâncias para o tooltip
+    # Pré-calcula adjacências e distâncias para montar os tooltips
     adj = {vid: [] for vid in vertices}
     for edge in edges:
         u = edge[0]
@@ -227,21 +223,21 @@ def draw_labels(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]],
             x2, y2 = vertices[v]
             dist = math.hypot(x1 - x2, y1 - y2)
             adj[u].append((v, dist))
-            # O tooltip vai mostrar conexões para ambos os lados simplificadamente
+            # Registra conexões em ambos sentidos para apresentação simplificada
             adj[v].append((u, dist)) 
 
     brush_v_dot = QBrush(QColor("#5e81ac"))
 
     for id_no, (x, y) in vertices.items():
-        # Bolinha azul
-        raio = 3.5  # Um pouco maior para facilitar quando passar o mouse
+        # Marcador pequeno para o vértice
+        raio = 3.5  # Raio em pixels, levemente ampliado para facilitar interação
         dot = QGraphicsEllipseItem(-raio, -raio, raio * 2, raio * 2)
         dot.setBrush(brush_v_dot)
         dot.setPen(QPen(Qt.PenStyle.NoPen))
         dot.setPos(x, y)
         dot.setFlag(QGraphicsEllipseItem.GraphicsItemFlag.ItemIgnoresTransformations)
 
-        # Constrói o balão de texto (Tooltip) super charmoso usando HTML
+        # Constrói o HTML do tooltip exibindo informações do vértice
         tooltip = f"<div style='background-color: #2b2b2b; color: #DCE4EE; padding: 5px; border-radius: 4px;'>"
         tooltip += f"<b>Vértice ID: {id_no}</b>"
         if adj[id_no]:
@@ -255,7 +251,7 @@ def draw_labels(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]],
 
         dot.setToolTip(tooltip)
 
-        dot.hide() # Fica escondido até o usuário decidir ativar os rótulos!
+        dot.hide() # Mantém oculto até que a exibição de rótulos seja ativada
         scene.addItem(dot)
         labels.append(dot)
 
@@ -263,7 +259,7 @@ def draw_labels(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]],
 
 
 def draw_point(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], id_no: int, color: str, track_items: list):
-    """Planta o 'Ponto Animado' em cima de um cruzamento, usado na origem ou no destino."""
+    """Desenha um marcador animado (PulsingDot) sobre o vértice especificado."""
     x, y = vertices[id_no]
     dot = PulsingDot(x, y, color)
     scene.addItem(dot)
@@ -272,10 +268,8 @@ def draw_point(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], 
 
 
 def draw_route(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], caminho: list[int], track_items: list):
-    """
-    Desenha o famoso 'Caminho Mais Curto' encontrado pelo Dijkstra!
-    Cria uma linha grossa e colorida que vai do vermelho da origem para o verde do destino.
-    Retorna a lista de itens de seta da rota (para controle de visibilidade).
+    """Desenha a rota calculada pelo Dijkstra, com gradiente de cor e setas decorativas.
+    Retorna itens de seta da rota para controle de visibilidade.
     """
     setas_rota = []
 
@@ -283,7 +277,7 @@ def draw_route(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], 
         return setas_rota
 
     total_segments = len(caminho) - 1
-    # Intervalo entre setas: a cada N ruas vamos desenhar uma setinha na rota
+    # Determina intervalo de setas decorativas ao longo da rota
     intervalo_setas = max(1, total_segments // 12)
 
     for i in range(total_segments):
@@ -292,7 +286,7 @@ def draw_route(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], 
         else:
             t = i / (total_segments - 1)
 
-        # Interpolar (misturar) a cor de vermelho (#ff4c4c) para verde (#50fa7b) passo a passo
+        # Interpola a cor do gradiente entre vermelho (origem) e verde (destino)
         r = int(255 * (1 - t) + 80 * t)
         g = int(76 * (1 - t) + 250 * t)
         b = int(76 * (1 - t) + 123 * t)
@@ -305,13 +299,11 @@ def draw_route(scene: QGraphicsScene, vertices: dict[int, tuple[float, float]], 
         x1, y1 = vertices[caminho[i]]
         x2, y2 = vertices[caminho[i + 1]]
 
-        # Adiciona aquele trecho específico da rota ao mapa
+        # Desenha o segmento da rota na cena
         line = scene.addLine(x1, y1, x2, y2, pen)
         track_items.append(line)
 
-    # Coloca umas setinhas elegantes espalhadas pela rota para o usuário saber pra onde ir
-    # Agora as setinhas usam tamanho constante em PIXELS na tela (Cosméticas) 
-    # para não ficarem gigantes no zoom in, nem minúsculas no zoom out.
+    # Adiciona setas decorativas ao longo da rota (tamanho fixo em pixels)
     from PyQt6.QtWidgets import QGraphicsPathItem
 
     sz = 11.0  # Tamanho fixo em pixels para a seta

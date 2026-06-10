@@ -26,8 +26,7 @@ from ui.icons import IconFactory
 
 class NotificationWidget(QWidget):
     """
-    Um pequeno widget flutuante e animado que aparece no topo da tela 
-    para dar avisos de sucesso ou de erro (tipo os toast notifications de celular).
+    Widget flutuante para exibir notificações breves (sucesso/erro) com animação.
     """
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -66,7 +65,7 @@ class NotificationWidget(QWidget):
         """)
         self.adjustSize()
         
-        # Centralizar horizontalmente no topo
+        # Centraliza horizontalmente no topo da janela
         parent_width = self.parent().width()
         x = (parent_width - self.width()) // 2
         
@@ -129,11 +128,11 @@ class MinRouteApp(QMainWindow):
         self.notification = NotificationWidget(self.view)
         self.mostrar_estado_vazio()
 
-        # Atalho de teclado: Ctrl+C para traçar menor caminho (conforme documentação)
+        # Atalho: Ctrl+C para traçar o menor caminho
         atalho_tracar = QShortcut(QKeySequence("Ctrl+C"), self)
         atalho_tracar.activated.connect(self.tracar_caminho)
 
-        # Atalhos de Zoom (Ctrl+ e Ctrl-)
+        # Atalhos de zoom (Ctrl+ e Ctrl-)
         atalho_zoom_in = QShortcut(QKeySequence("Ctrl++"), self)
         atalho_zoom_in.activated.connect(lambda: self.view.scale(1.15, 1.15))
         
@@ -145,8 +144,7 @@ class MinRouteApp(QMainWindow):
 
     def configurar_layout(self):
         """
-        Monta a carinha do programa. Cria a barra lateral elegante e posiciona
-        o mapa no espaço restante. Define cores, botões e textos.
+        Constrói a interface principal: sidebar, botões e área de mapa.
         """
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -154,7 +152,7 @@ class MinRouteApp(QMainWindow):
         layout_principal.setContentsMargins(0, 0, 0, 0)
         layout_principal.setSpacing(0)
 
-        # Base da Sidebar
+        # Área lateral (sidebar)
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
         sidebar.setFixedWidth(280)
@@ -181,14 +179,14 @@ class MinRouteApp(QMainWindow):
         layout_sidebar.setContentsMargins(20, 25, 20, 20)
         layout_sidebar.setSpacing(15)
 
-        # Logo
+        # Cabeçalho / logo
         lbl_logo = QLabel("MinRoute")
         lbl_logo.setFont(QFont("Segoe UI", 18, QFont.Weight.ExtraBold))
         lbl_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         lbl_logo.setStyleSheet("margin-bottom: 10px; border: none;")
         layout_sidebar.addWidget(lbl_logo)
 
-        # ── SEÇÃO: Dados do Mapa ──
+        # Seção: Dados do Mapa
         layout_sidebar.addWidget(self._criar_separador())
         lbl_file = QLabel("DADOS DO MAPA")
         lbl_file.setStyleSheet("color: #808080; font-size: 11px; font-weight: bold; letter-spacing: 1px; border: none;")
@@ -219,7 +217,7 @@ class MinRouteApp(QMainWindow):
         self.btn_remover.hide()
         layout_sidebar.addWidget(self.btn_remover)
 
-        # ── SEÇÃO: Navegação ──
+        # Seção: Navegação
         layout_sidebar.addWidget(self._criar_separador())
         lbl_nav = QLabel("NAVEGAÇÃO")
         lbl_nav.setStyleSheet("color: #808080; font-size: 11px; font-weight: bold; letter-spacing: 1px; border: none;")
@@ -253,7 +251,7 @@ class MinRouteApp(QMainWindow):
         self.btn_limpar.clicked.connect(self.limpar_rota)
         layout_sidebar.addWidget(self.btn_limpar)
 
-        # ── SEÇÃO: Ferramentas ──
+        # Seção: Ferramentas
         layout_sidebar.addWidget(self._criar_separador())
         lbl_tools = QLabel("FERRAMENTAS")
         lbl_tools.setStyleSheet("color: #808080; font-size: 11px; font-weight: bold; letter-spacing: 1px; border: none;")
@@ -301,7 +299,7 @@ class MinRouteApp(QMainWindow):
         self.cb_mao_unica.toggled.connect(self.ao_alternar_mao_unica)
         layout_sidebar.addWidget(self.cb_mao_unica)
 
-        # ── SEÇÃO: Exportação ──
+        # Seção: Exportação
         layout_sidebar.addWidget(self._criar_separador())
         lbl_export = QLabel("EXPORTAÇÃO")
         lbl_export.setStyleSheet("color: #808080; font-size: 11px; font-weight: bold; letter-spacing: 1px; border: none;")
@@ -319,7 +317,7 @@ class MinRouteApp(QMainWindow):
 
         layout_sidebar.addStretch()
 
-        # Painel de Estatísticas
+        # Painel de estatísticas
         frame_stats = QFrame()
         frame_stats.setObjectName("StatsCard")
         frame_stats.setStyleSheet("""
@@ -445,7 +443,7 @@ class MinRouteApp(QMainWindow):
             print(f"Erro ao carregar mapa: {e}")
 
     def redesenhar_mapa_completo(self, reset_view=False):
-        # Guardamos a origem e destino atuais para não perdermos a seleção ao atualizar o mapa
+        # Preserva origem/destino ao redesenhar para não perder a seleção
         origem_temp = self.origem
         destino_temp = self.destino
         
@@ -454,34 +452,33 @@ class MinRouteApp(QMainWindow):
         self.labels.clear()
         self.setas.clear()
         
-        # Recuperamos o estado
+        # Restaura origem/destino
         self.origem = origem_temp
         self.destino = destino_temp
         
         self.setas = draw_map(self.scene, self.vertices, self.todas_arestas)
         
-        # Como draw_map agora retorna as setas visíveis por padrão, 
-        # nós as escondemos aqui caso o botão esteja desligado
+        # draw_map retorna setas visíveis por padrão; oculta-as se a opção estiver desativada
         if not self.btn_sentido.isChecked():
             for seta in self.setas:
                 seta.hide()
                 
-        # Aplica o Level of Detail dinâmico baseado no zoom atual
+        # Aplica LOD (level-of-detail) às setas conforme a escala atual
         self.atualizar_tamanho_setas(self.view.transform().m11())
         
-        # Otimização de Desempenho: Só cria as milhares de bolinhas azuis/tooltips se a opção estiver ligada
+        # Otimização: cria tooltips apenas quando a opção de rótulos estiver habilitada
         if self.btn_rotulos.isChecked():
             self.labels = draw_labels(self.scene, self.vertices, self.todas_arestas)
             for lbl in self.labels:
                 lbl.show()
                 
-        # No Modo Edição, desenhamos apenas os pontos que o usuário criou ou selecionou
+        # No modo edição, desenha apenas os vértices criados ou selecionados pelo usuário
         if self.modo_edicao_ativo:
             for vid in self.vertices_edicao:
                 if vid in self.vertices:
-                    self.desenhar_ponto(vid, "#b48ead") # Lilás para edição
+                    self.desenhar_ponto(vid, "#b48ead") # Cor de destaque para pontos em edição
                     
-        # Redesenhando os pontos de Origem e Destino, caso ainda existam no grafo
+        # Redesenha origem e destino caso ainda existam no grafo
         if self.origem is not None:
             if self.origem in self.vertices:
                 self.desenhar_ponto(self.origem, "#ff4c4c")
@@ -535,9 +532,9 @@ class MinRouteApp(QMainWindow):
             dist = seta.data(0)
             if dist:
                 # view_scale * dist = tamanho da aresta em pixels na tela
-                # 0.025 é o fator mágico (equivale a limitar a seta a ~35% da aresta)
+                # 0.025 é um fator empírico para limitar o tamanho relativo da seta
                 escala = min(1.0, dist * view_scale * 0.025)
-                # O limite inferior de 0.15 evita que a matriz de transformação do Qt zere
+                # Limite inferior evita transformação inválida na matriz do Qt
                 seta.setScale(max(0.15, escala))
 
     def ao_alternar_mao_unica(self, checked):
@@ -546,7 +543,7 @@ class MinRouteApp(QMainWindow):
 
     def alternar_modo_edicao(self, ativo):
         self.modo_edicao_ativo = ativo
-        self.vertices_edicao.clear() # Limpa a lista de visualização ao alternar
+        self.vertices_edicao.clear() # Limpa seleção de vértices de edição ao alternar o modo
         if ativo:
             self.btn_edicao.setText("Desativar Modo Edição")
             self.limpar_rota()
@@ -559,14 +556,14 @@ class MinRouteApp(QMainWindow):
             self.cb_mao_unica.hide()
 
     def update_status(self, mensagem: str, sucesso: bool = True):
-        # Exibe popup apenas para encontrar rota ou não encontrar
+        # Mostra notificações relevantes relacionadas à operação de rota
         if "encontrada" in mensagem.lower() or "nenhum" in mensagem.lower():
             self.notification.show_message(mensagem, sucesso)
 
     def ao_duplo_clique_mapa(self, x_clique, y_clique):
         """
-        Apaga um vértice e todas as ruas conectadas a ele quando o usuário 
-        dá um duplo clique com a borracha (se estiver no modo edição).
+        Remove um vértice e as arestas conectadas em resposta a duplo clique no mapa
+        (válido apenas no modo edição).
         """
         if not self.modo_edicao_ativo:
             return
@@ -576,7 +573,7 @@ class MinRouteApp(QMainWindow):
         clicou_no_vazio = menor_dist_sq > (18 / zoom) ** 2
         
         if not clicou_no_vazio:
-            # Se a gente excluiu o nó que estava selecionado para criar aresta, limpa a seleção
+            # Remove vértice e todas as arestas associadas; atualiza seleção de edição
             if no_mais_proximo in self.vertices:
                 del self.vertices[no_mais_proximo]
             self.todas_arestas = [
@@ -610,15 +607,15 @@ class MinRouteApp(QMainWindow):
                     # Primeiro clique: selecionar para conexão (amarelo)
                     self.no_edicao_selecionado = no_mais_proximo
                     self.redesenhar_mapa_completo(reset_view=False)
-                    self.desenhar_ponto(no_mais_proximo, "#f1c40f")  # Amarelo = selecionado
+                    self.desenhar_ponto(no_mais_proximo, "#f1c40f")  # Indicador de seleção
                     self.notification.show_message(f"Vértice {no_mais_proximo} selecionado. Clique em outro para conectar.", sucesso=True)
                 elif self.no_edicao_selecionado == no_mais_proximo:
-                    # Clicou no mesmo: desselecionar
+                    # Clique repetido: desseleciona
                     self.no_edicao_selecionado = None
                     self.redesenhar_mapa_completo(reset_view=False)
                     self.notification.show_message("Seleção cancelada.", sucesso=True)
                 else:
-                    # Segundo clique: criar aresta
+                    # Segundo clique: cria aresta entre vértices selecionados
                     is_bidir = not self.cb_mao_unica.isChecked()
                     self.todas_arestas.append((self.no_edicao_selecionado, no_mais_proximo, is_bidir))
                     self.vertices_edicao.add(self.no_edicao_selecionado)
@@ -648,8 +645,8 @@ class MinRouteApp(QMainWindow):
 
     def tracar_caminho(self):
         """
-        Aqui a mágica acontece! Salva o estado atual do mapa em um arquivo temporário,
-        chama o Algoritmo de Dijkstra lá do Java e desenha a resposta na tela.
+        Executa o fluxo para traçar rota: salva snapshot, invoca o motor Java (Dijkstra)
+        e desenha o resultado retornado.
         """
         if self.origem is None or self.destino is None:
             return
@@ -668,7 +665,7 @@ class MinRouteApp(QMainWindow):
 
             if caminho:
                 self.setas_rota = draw_route(self.scene, self.vertices, caminho, self.itens_rota)
-                # Se o botão de sentido estiver desligado, esconde as setas da rota
+                # Se a opção de exibir sentido estiver desligada, oculta as setas da rota
                 if not self.btn_sentido.isChecked():
                     for seta in self.setas_rota:
                         seta.hide()
@@ -677,7 +674,7 @@ class MinRouteApp(QMainWindow):
                 self.lbl_custo.setText(f"Distância: {dados['distancia_total']:.2f} u.m.")
                 self.update_status("Rota encontrada com sucesso.")
             else:
-                # Tenta o caminho reverso para detectar bloqueio por mão única
+                # Tenta calcular rota no sentido inverso para verificar bloqueios por mão única
                 try:
                     dados_reverso = run_dijkstra(java_cp, Path(self.caminho_mapa_editado), self.destino, self.origem)
                     caminho_reverso = dados_reverso.get("caminho", [])
@@ -685,13 +682,13 @@ class MinRouteApp(QMainWindow):
                     caminho_reverso = []
 
                 if caminho_reverso:
-                    # Caminho reverso existe → bloqueio por mão única
+                    # Existe rota no sentido inverso: provável bloqueio por via(s) de mão única
                     self.notification.show_message(
                         "Caminho bloqueado por via(s) de mão única! Tente inverter origem e destino.",
                         sucesso=False
                     )
                 else:
-                    # Nenhuma direção funciona → nós desconectados
+                    # Nenhuma das direções produziu rota: vértices desconectados
                     self.notification.show_message(
                         "Nenhum caminho possível entre os pontos selecionados.",
                         sucesso=False

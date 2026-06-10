@@ -3,15 +3,14 @@ package src.core;
 import java.util.*;
 
 /**
- * Esta é a classe principal de matemática do projeto!
- * É aqui que roda o Algoritmo de Dijkstra, responsável por encontrar o caminho mais rápido/curto
- * entre dois pontos no nosso mapa (Grafo).
+ * Responsável pelo cálculo de rotas usando o algoritmo de Dijkstra.
+ * Fornece um ponto de entrada para execução standalone e retorna o resultado em JSON.
  */
 public class DijkstraCore {
 
     /**
-     * O 'NoFila' é um ajudante que usamos para organizar a fila de pontos a visitar.
-     * Ele guarda qual é o ponto (id) e qual é a distância estimada até ele no momento.
+     * Nó auxiliar para a fila de prioridade, contendo o identificador do vértice e
+     * a distância estimada a partir da origem.
      */
     static class NoFila implements Comparable<NoFila> {
         int id;
@@ -22,7 +21,7 @@ public class DijkstraCore {
             this.distancia = distancia;
         }
 
-        // Essa função ensina a fila a se organizar: os pontos com menor distância ficam na frente!
+        // Compara nós por distância para ordenar a fila de prioridade (menor primeiro).
         @Override
         public int compareTo(NoFila outro) {
             return Double.compare(this.distancia, outro.distancia);
@@ -30,24 +29,25 @@ public class DijkstraCore {
     }
 
     /**
-     * Ponto de entrada do programa Java. O Python chama essa função passando os argumentos.
+     * Ponto de entrada da aplicação Java.
+     * Recebe os argumentos: <arquivo_do_mapa> <origem> <destino>.
      */
     public static void main(String[] args) {
-        // Se não nos derem o mapa, de onde sair e onde chegar, não temos o que fazer!
+        // Valida argumentos de entrada e exibe uso em caso de formato incorreto.
         if (args.length < 3) {
             System.err.println("{\"erro\": \"Ops! Forma de usar: java src.core.DijkstraCore <arquivo> <origem> <destino>\"}");
             System.exit(1);
         }
 
         try {
-            // Vamos cronometrar para ver o quão rápidos somos
+            // Mede o tempo total de processamento
             long tempoInicio = System.currentTimeMillis();
 
-            // 1. O Parser faz a leitura "suja" (decidindo qual o formato do mapa pela extensão)
+            // Determina o parser apropriado a partir da extensão do arquivo
             String caminhoArquivo = args[0];
             Grafo grafo;
             
-            // Escolhemos o tradutor correto para o tipo de arquivo
+            // Seleciona o leitor adequado para o formato do mapa
             if (caminhoArquivo.toLowerCase().endsWith(".osm") || caminhoArquivo.toLowerCase().endsWith(".xml")) {
                 grafo = ParserOSM.carregar(caminhoArquivo);
             } else if (caminhoArquivo.toLowerCase().endsWith(".txt")) {
@@ -56,108 +56,105 @@ public class DijkstraCore {
                 grafo = ParserPoly.carregar(caminhoArquivo);
             }
             
-            // 2. Executa a matemática "limpa" para achar a rota
+            // Executa o algoritmo para calcular a rota entre origem e destino
             int origem = Integer.parseInt(args[1]);
             int destino = Integer.parseInt(args[2]);
             ResultadoDijkstra resultado = executarDijkstra(grafo, origem, destino);
 
-            // 3. Empacota a resposta no formato JSON para o Python conseguir ler
+            // Formata o resultado em JSON para o chamador (Python)
             long tempoProcessamento = System.currentTimeMillis() - tempoInicio;
             imprimirResultadoJSON(resultado, tempoProcessamento);
 
         } catch (Exception e) {
-            // Se algo explodir, avisamos o Python com um JSON de erro
+            // Em caso de erro, retorna um JSON descrevendo o problema ao chamador
             System.err.println("{\"erro\": \"" + e.getMessage() + "\"}");
             System.exit(1);
         }
     }
 
     /**
-     * O famoso Algoritmo de Dijkstra! Ele explora o mapa passo a passo até achar o melhor caminho.
+     * Implementação do algoritmo de Dijkstra para encontrar o caminho mínimo
+     * entre `origem` e `destino` em um objeto `Grafo`.
      */
     private static ResultadoDijkstra executarDijkstra(Grafo grafo, int origem, int destino) {
-        // 'distancias' guarda a menor distância que achamos do início até o ponto X
+        // Distância mínima conhecida da origem até cada vértice
         double[] distancias = new double[grafo.totalVertices];
-        // 'predecessores' funciona como um rastro de migalhas para sabermos por onde viemos
+        // Predecessor imediato de cada vértice para reconstrução do caminho
         int[] predecessores = new int[grafo.totalVertices];
-        // 'visitados' nos ajuda a não andar em círculos
+        // Marca vértices já processados para evitar reprocessamento
         boolean[] visitados = new boolean[grafo.totalVertices];
         
-        // No começo, não sabemos a distância para ninguém, então chutamos "infinito"
+        // Inicializa distâncias com infinito e predecessores com valor inválido
         Arrays.fill(distancias, Double.POSITIVE_INFINITY);
-        // E também não viemos de lugar nenhum, então enchemos de -1
         Arrays.fill(predecessores, -1);
         
-        // A distância do ponto de partida até ele mesmo é, obviamente, zero!
+        // Distância da origem até si mesma é zero
         distancias[origem] = 0;
-        
-        // Fila de Prioridade (Heap Mínima): ela sempre nos entrega primeiro o ponto mais próximo.
+
+        // Fila de prioridade (min-heap) usada para selecionar o próximo vértice a explorar
         PriorityQueue<NoFila> filaPrioridade = new PriorityQueue<>();
         filaPrioridade.add(new NoFila(origem, 0.0));
-        
-        int nosExplorados = 0; // Para estatística: quantos cruzamentos olhamos?
+
+        int nosExplorados = 0; // Contador de vértices processados (estatística)
 
         while (!filaPrioridade.isEmpty()) {
-            // Pega o ponto mais próximo na fila
+            // Remove o vértice com menor distância estimada da fila
             NoFila atual = filaPrioridade.poll();
             int u = atual.id;
 
-            // Se já passamos por aqui antes e já fizemos o que tínhamos que fazer, pula!
+            // Ignora vértices já finalizados
             if (visitados[u]) continue;
             visitados[u] = true;
             nosExplorados++;
 
-            // Oba, chegamos no destino! Podemos parar a busca.
+            // Destino alcançado; interrompe a exploração
             if (u == destino) break;
 
-            // Vamos olhar para onde dá para ir a partir do ponto atual (nossos vizinhos)
+            // Relaxa arestas: percorre vizinhos e atualiza distâncias quando apropriado
             if (grafo.vertices[u] != null) {
                 for (Grafo.Aresta aresta : grafo.vertices[u].vizinhos) {
                     int v = aresta.destino;
                     double peso = aresta.peso;
 
-                    // Se não visitamos o vizinho ainda E o caminho por aqui for mais rápido
-                    // do que o melhor caminho que conhecíamos antes...
+                    // Se o caminho via `u` melhora a distância conhecida até `v`
                     if (!visitados[v] && distancias[u] + peso < distancias[v]) {
-                        // Atualizamos a distância! Achamos um atalho!
+                        // Atualiza distância e predecessor, e agenda o vértice para exploração
                         distancias[v] = distancias[u] + peso;
-                        // Deixamos a migalha de pão dizendo "vim daqui"
                         predecessores[v] = u;
-                        // E colocamos o vizinho na fila para ser explorado mais tarde
                         filaPrioridade.add(new NoFila(v, distancias[v]));
                     }
                 }
             }
         }
 
-        // Depois que terminamos de explorar, remontamos o caminho de trás pra frente
+        // Reconstrói o caminho a partir dos predecessores e retorna o resultado
         return reconstruirCaminho(origem, destino, distancias, predecessores, nosExplorados);
     }
 
     /**
-     * Usa as "migalhas de pão" (predecessores) para traçar o caminho do destino de volta para a origem.
+     * Reconstrói o caminho do destino até a origem utilizando o vetor de predecessores
+     * e retorna um objeto com o caminho, distância total e estatísticas.
      */
     private static ResultadoDijkstra reconstruirCaminho(int origem, int destino, double[] dist, int[] prev, int nosExplorados) {
         List<Integer> caminho = new ArrayList<>();
         
-        // Se a distância ainda for "infinito", significa que é impossível chegar lá (não tem rua)
+        // Se a distância for infinito, não existe caminho entre origem e destino
         if (dist[destino] == Double.POSITIVE_INFINITY) {
             return new ResultadoDijkstra(caminho, -1.0, nosExplorados);
         }
 
-        // Vai voltando pelo rastro de migalhas...
+        // Percorre os predecessores do destino até a origem
         for (int at = destino; at != -1; at = prev[at]) {
             caminho.add(at);
         }
-        // ...e depois inverte a lista para ficar na ordem certa (da origem pro destino)
+        // Inverte para obter a sequência da origem ao destino
         Collections.reverse(caminho);
         
         return new ResultadoDijkstra(caminho, dist[destino], nosExplorados);
     }
 
     /**
-     * Pega o resultado da nossa matemática e formata como um texto bonitinho em JSON
-     * que a interface feita em Python vai adorar ler.
+     * Formata o resultado da busca em JSON para o consumidor externo (ex.: a ponte Python).
      */
     private static void imprimirResultadoJSON(ResultadoDijkstra resultado, long tempoMs) {
         StringBuilder json = new StringBuilder();
@@ -167,7 +164,7 @@ public class DijkstraCore {
         json.append("  \"distancia_total\": ").append(resultado.distanciaTotal).append(",\n");
         json.append("  \"caminho\": [");
         
-        // Monta a lista do caminho
+        // Monta o array de vértices representando o caminho
         for (int i = 0; i < resultado.caminho.size(); i++) {
             json.append(resultado.caminho.get(i));
             if (i < resultado.caminho.size() - 1) json.append(", ");
@@ -179,7 +176,7 @@ public class DijkstraCore {
     }
 
     /**
-     * Uma caixinha para guardarmos o resumo de tudo o que a busca de rota encontrou.
+     * Estrutura de retorno que agrupa o caminho, a distância total e estatísticas da busca.
      */
     static class ResultadoDijkstra {
         List<Integer> caminho;

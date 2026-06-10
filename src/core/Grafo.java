@@ -4,8 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A classe Grafo representa o "mapa" que vamos usar para encontrar as rotas.
- * Pense nela como uma teia de pontos (vértices) interligados por caminhos (arestas).
+ * Representa o grafo de mapas: vértices (pontos) conectados por arestas (ruas).
  */
 public class Grafo {
     
@@ -24,9 +23,7 @@ public class Grafo {
     }
 
     /**
-     * Um Vértice é um cruzamento ou ponto de interesse no nosso mapa.
-     * Cada ponto tem uma identificação (id), coordenadas no mapa (x e y) 
-     * e uma lista de todos os caminhos que saem dele (vizinhos).
+     * Vértice do grafo, com identificador, coordenadas e lista de arestas adjacentes.
      */
     public static class Vertice {
         public long id;
@@ -37,14 +34,14 @@ public class Grafo {
             this.id = id;
             this.x = x;
             this.y = y;
-            // Começamos com uma lista vazia de caminhos
+            // Inicializa lista de arestas adjacentes vazia
             this.vizinhos = new ArrayList<>();
         }
     }
 
-    // Aqui guardamos todos os pontos do nosso mapa
+    // Vetor de vértices do grafo
     public Vertice[] vertices;
-    // E aqui anotamos quantos pontos existem no total
+    // Quantidade total de vértices alocada
     public int totalVertices;
 
     /**
@@ -66,19 +63,19 @@ public class Grafo {
      * Cria uma rua de mão dupla entre dois pontos. Ou seja, você pode ir e voltar por ela.
      */
     public void adicionarArestaBidirecional(int origem, int destino) {
-        // Primeiro, verificamos se os pontos realmente existem no mapa
+        // Valida índices e existência dos vértices
         if (origem >= vertices.length || destino >= vertices.length || 
             vertices[origem] == null || vertices[destino] == null) {
-            return; // Se não existirem, a gente apenas ignora
+            return; // Ignora aresta se algum vértice for inválido
         }
         
-        // Calcula a distância real entre os dois pontos de forma automática
+        // Calcula o peso (distância euclidiana) entre os vértices
         double peso = calcularDistancia(vertices[origem], vertices[destino]);
         
-        // Cria o caminho de ida
+        // Adiciona aresta de ida
         vertices[origem].vizinhos.add(new Aresta(destino, peso));
         
-        // RNF06: Suporte a mão dupla (criamos o caminho de volta também)
+        // Adiciona aresta de volta (bidirecional)
         vertices[destino].vizinhos.add(new Aresta(origem, peso));
     }
 
@@ -86,25 +83,24 @@ public class Grafo {
      * Cria uma rua de mão única. Você só pode ir da origem para o destino.
      */
     public void adicionarArestaDirecionada(int origem, int destino) {
-        // Verifica novamente se os pontos são válidos
+        // Valida índices e existência dos vértices
         if (origem >= vertices.length || destino >= vertices.length || 
             vertices[origem] == null || vertices[destino] == null) {
             return;
         }
         
-        // Calcula a distância
+        // Calcula o peso (distância euclidiana)
         double peso = calcularDistancia(vertices[origem], vertices[destino]);
         
-        // Adiciona apenas o caminho de ida, sem a volta
+        // Adiciona aresta direcionada (origem -> destino)
         vertices[origem].vizinhos.add(new Aresta(destino, peso));
     }
 
     /**
-     * Uma função auxiliar que descobre qual é a distância em linha reta (euclidiana)
-     * entre dois pontos do mapa.
+     * Calcula a distância euclidiana entre dois vértices.
      */
     private double calcularDistancia(Vertice v1, Vertice v2) {
-        // Usa o teorema de Pitágoras para achar a distância!
+        // Distância euclidiana (raiz de soma dos quadrados das diferenças)
         return Math.sqrt(Math.pow(v1.x - v2.x, 2) + Math.pow(v1.y - v2.y, 2));
     }
 }
